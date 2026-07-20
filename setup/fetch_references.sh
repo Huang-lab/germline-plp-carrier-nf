@@ -19,6 +19,12 @@ set -euo pipefail
 # these paths is used as-is (no re-download).
 : "${SHARED_REFS:=/sc/arion/projects/YOUR_PROJECT/refs}"
 
+# Per-classifier gating — set to 1 to skip the corresponding resource block.
+# For a ClinVar-only run, set:  SKIP_AM=1 SKIP_LOFTEE=1 SKIP_GNOMAD=1
+: "${SKIP_AM:=0}"
+: "${SKIP_LOFTEE:=0}"
+: "${SKIP_GNOMAD:=0}"
+
 mkdir -p "$RESOURCES_DIR"/{clinvar,vep_cache,vep_fasta,alphamissense,loftee,gnomad,plugins}
 VERSIONS="$RESOURCES_DIR/versions.txt"
 : >"$VERSIONS"
@@ -63,43 +69,64 @@ reuse_or_download "$RESOURCES_DIR/vep_fasta/${FASTA_NAME}" \
 echo "vep_cache=${VEP_CACHE_VERSION}" >> "$VERSIONS"
 
 # --- AlphaMissense data ---
-AM_URL="https://storage.googleapis.com/dm_alphamissense/AlphaMissense_hg38.tsv.gz"
-reuse_or_download "$RESOURCES_DIR/alphamissense/AlphaMissense_hg38.tsv.gz" \
-    "$SHARED_REFS/alphamissense/AlphaMissense_hg38.tsv.gz" \
-    "$AM_URL"
-reuse_or_download "$RESOURCES_DIR/alphamissense/AlphaMissense_hg38.tsv.gz.tbi" \
-    "$SHARED_REFS/alphamissense/AlphaMissense_hg38.tsv.gz.tbi" \
-    "${AM_URL}.tbi"
-reuse_or_download "$RESOURCES_DIR/plugins/AlphaMissense.pm" "" \
-    "https://raw.githubusercontent.com/Ensembl/VEP_plugins/release/${VEP_CACHE_VERSION}/AlphaMissense.pm"
-echo "alphamissense=hg38-2023" >> "$VERSIONS"
+if [ "$SKIP_AM" = "1" ]; then
+    log "SKIP_AM=1 — skipping AlphaMissense downloads"
+else
+    AM_URL="https://storage.googleapis.com/dm_alphamissense/AlphaMissense_hg38.tsv.gz"
+    reuse_or_download "$RESOURCES_DIR/alphamissense/AlphaMissense_hg38.tsv.gz" \
+        "$SHARED_REFS/alphamissense/AlphaMissense_hg38.tsv.gz" \
+        "$AM_URL"
+    # AlphaMissense does NOT publish a .tbi — must be generated with tabix.
+    # We defer that to the annotate.sif container:
+    #   singularity exec annotate.sif tabix -s 1 -b 2 -e 2 -S 1 \
+    #       $RESOURCES_DIR/alphamissense/AlphaMissense_hg38.tsv.gz
+    if [ -s "$SHARED_REFS/alphamissense/AlphaMissense_hg38.tsv.gz.tbi" ]; then
+        ln -sfn "$SHARED_REFS/alphamissense/AlphaMissense_hg38.tsv.gz.tbi" \
+                "$RESOURCES_DIR/alphamissense/AlphaMissense_hg38.tsv.gz.tbi"
+    else
+        log "note: AlphaMissense_hg38.tsv.gz.tbi not present; generate it later with:"
+        log "  singularity exec annotate.sif tabix -s 1 -b 2 -e 2 -S 1 \\"
+        log "      $RESOURCES_DIR/alphamissense/AlphaMissense_hg38.tsv.gz"
+    fi
+    reuse_or_download "$RESOURCES_DIR/plugins/AlphaMissense.pm" "" \
+        "https://raw.githubusercontent.com/Ensembl/VEP_plugins/release/${VEP_CACHE_VERSION}/AlphaMissense.pm"
+    echo "alphamissense=hg38-2023" >> "$VERSIONS"
+fi
 
 # --- LOFTEE data (GRCh38) ---
-for f in human_ancestor.fa.gz human_ancestor.fa.gz.fai human_ancestor.fa.gz.gzi loftee.sql; do
-    reuse_or_download "$RESOURCES_DIR/loftee/$f" \
-        "$SHARED_REFS/loftee/$f" \
-        "https://personal.broadinstitute.org/konradk/loftee_data/GRCh38/$f"
-done
-reuse_or_download "$RESOURCES_DIR/loftee/gerp_conservation_scores.homo_sapiens.GRCh38.bw" \
-    "$SHARED_REFS/loftee/gerp_conservation_scores.homo_sapiens.GRCh38.bw" \
-    "https://personal.broadinstitute.org/konradk/loftee_data/GRCh38/gerp_conservation_scores.homo_sapiens.GRCh38.bw"
-echo "loftee=GRCh38" >> "$VERSIONS"
+if [ "$SKIP_LOFTEE" = "1" ]; then
+    log "SKIP_LOFTEE=1 — skipping LOFTEE downloads"
+else
+    for f in human_ancestor.fa.gz human_ancestor.fa.gz.fai human_ancestor.fa.gz.gzi loftee.sql; do
+        reuse_or_download "$RESOURCES_DIR/loftee/$f" \
+            "$SHARED_REFS/loftee/$f" \
+            "https://personal.broadinstitute.org/konradk/loftee_data/GRCh38/$f"
+    done
+    reuse_or_download "$RESOURCES_DIR/loftee/gerp_conservation_scores.homo_sapiens.GRCh38.bw" \
+        "$SHARED_REFS/loftee/gerp_conservation_scores.homo_sapiens.GRCh38.bw" \
+        "https://personal.broadinstitute.org/konradk/loftee_data/GRCh38/gerp_conservation_scores.homo_sapiens.GRCh38.bw"
+    echo "loftee=GRCh38" >> "$VERSIONS"
+fi
 
 # --- gnomAD v4 exome sites (~200GB; NEVER download if lab copy exists) ---
-GNOMAD_NAME="gnomad.exomes.${GNOMAD_VERSION}.sites.vcf.bgz"
-if [ -s "$SHARED_REFS/gnomad/${GNOMAD_NAME}" ]; then
-    ln -sfn "$SHARED_REFS/gnomad/${GNOMAD_NAME}"     "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}"
-    ln -sfn "$SHARED_REFS/gnomad/${GNOMAD_NAME}.tbi" "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}.tbi"
-    log "reusing shared gnomAD at $SHARED_REFS/gnomad/${GNOMAD_NAME}"
-elif [ ! -s "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}" ]; then
-    log "WARNING: gnomAD not found locally or in \$SHARED_REFS."
-    log "Set GNOMAD_URL_PREFIX to a mirror URL and re-run this script to fetch."
-    if [ -n "${GNOMAD_URL_PREFIX:-}" ]; then
-        curl -fsSL "$GNOMAD_URL_PREFIX/${GNOMAD_NAME}"     -o "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}"
-        curl -fsSL "$GNOMAD_URL_PREFIX/${GNOMAD_NAME}.tbi" -o "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}.tbi"
+if [ "$SKIP_GNOMAD" = "1" ]; then
+    log "SKIP_GNOMAD=1 — skipping gnomAD"
+else
+    GNOMAD_NAME="gnomad.exomes.${GNOMAD_VERSION}.sites.vcf.bgz"
+    if [ -s "$SHARED_REFS/gnomad/${GNOMAD_NAME}" ]; then
+        ln -sfn "$SHARED_REFS/gnomad/${GNOMAD_NAME}"     "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}"
+        ln -sfn "$SHARED_REFS/gnomad/${GNOMAD_NAME}.tbi" "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}.tbi"
+        log "reusing shared gnomAD at $SHARED_REFS/gnomad/${GNOMAD_NAME}"
+    elif [ ! -s "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}" ]; then
+        log "WARNING: gnomAD not found locally or in \$SHARED_REFS."
+        log "Set GNOMAD_URL_PREFIX to a mirror URL and re-run this script to fetch."
+        if [ -n "${GNOMAD_URL_PREFIX:-}" ]; then
+            curl -fsSL "$GNOMAD_URL_PREFIX/${GNOMAD_NAME}"     -o "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}"
+            curl -fsSL "$GNOMAD_URL_PREFIX/${GNOMAD_NAME}.tbi" -o "$RESOURCES_DIR/gnomad/${GNOMAD_NAME}.tbi"
+        fi
     fi
+    echo "gnomad=${GNOMAD_VERSION}" >> "$VERSIONS"
 fi
-echo "gnomad=${GNOMAD_VERSION}" >> "$VERSIONS"
 
 log "versions:"
 cat "$VERSIONS" >&2
