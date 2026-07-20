@@ -16,20 +16,21 @@ process NORM_QC {
     if command -v bcftools >/dev/null 2>&1 && [ -s "${reference_fasta}" ]; then
         # Contig-naming reconciliation. The reference FASTA, VEP cache, and NCBI
         # ClinVar are Ensembl-style (1,2,...,X,Y,MT); input VCFs may be UCSC-style
-        # (chr1,...,chrM). Build a rename map from the VCF's own chr-prefixed
-        # contigs so everything downstream is in one naming space.
-        bcftools view -h ${vcf} \\
-          | awk -F'[=,>]' '/^##contig/{for(i=1;i<=NF;i++) if(\$i=="ID"){print \$(i+1)}}' \\
-          > contigs.txt
+        # (chr1,...,chrM). Derive the chromosome names from the actual records
+        # (CHROM column) — VCFs frequently omit ##contig headers — and build a
+        # chr-stripping rename map. chrM/chrMT -> MT.
+        bcftools view ${vcf} | grep -v '^#' | cut -f1 | uniq > chroms.txt
         : > chr_map.txt
         while read -r c; do
+            [ -z "\$c" ] && continue
             case "\$c" in
                 chrM|chrMT) printf '%s\\tMT\\n'  "\$c" >> chr_map.txt ;;
                 chr*)       printf '%s\\t%s\\n' "\$c" "\${c#chr}" >> chr_map.txt ;;
             esac
-        done < contigs.txt
+        done < chroms.txt
 
         if [ -s chr_map.txt ]; then
+            echo "Renaming contigs:"; cat chr_map.txt
             bcftools annotate --rename-chrs chr_map.txt ${vcf} -Oz -o renamed.vcf.gz
             SRC=renamed.vcf.gz
         else
