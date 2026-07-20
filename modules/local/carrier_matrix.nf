@@ -7,24 +7,29 @@ process CARRIER_MATRIX {
     path acmg_tsv
     path am_tsv
     path keep_samples
+    val classifiers_csv
 
     output:
     path("${chunk_id}.carrier_matrix.tsv"), emit: long_tsv
 
     script:
-    def keep_arg = keep_samples ? "--keep ${keep_samples}" : ""
+    def has_cv = clinvar_tsv?.size() > 0 ? "--clinvar ${clinvar_tsv}" : ""
+    def has_ac = acmg_tsv?.size()    > 0 ? "--acmg ${acmg_tsv}"       : ""
+    def has_am = am_tsv?.size()      > 0 ? "--am ${am_tsv}"           : ""
+    def keep_arg = (keep_samples && keep_samples.size() > 0) ? "--keep ${keep_samples}" : ""
     """
     set -euo pipefail
-    # Subset annotated VCF to union of qualifying variants (once), then single bcftools query.
+    # Union of qualifying variants (across whichever classifiers ran) → BED.
     python3 - <<'PY'
-import csv
+import csv, os
 keys = set()
 for p, f in [("${clinvar_tsv}", "is_clinvar_PLP"),
-             ("${acmg_tsv}", "is_acmg_PLP"),
-             ("${am_tsv}", "is_AM_PLP")]:
+             ("${acmg_tsv}",    "is_acmg_PLP"),
+             ("${am_tsv}",      "is_AM_PLP")]:
+    if not p or not os.path.exists(p) or os.path.getsize(p) == 0:
+        continue
     with open(p) as fh:
-        r = csv.DictReader(fh, delimiter="\\t")
-        for row in r:
+        for row in csv.DictReader(fh, delimiter="\\t"):
             if int(row.get(f, "0") or 0):
                 keys.add((row["chr"], row["pos"], row["ref"], row["alt"]))
 with open("qualifying.bed", "w") as out:
@@ -44,15 +49,12 @@ PY
                 }
             }' > gt.tsv
     else
-        # Test-profile fallback: derive per-sample GT from the fixture VCF directly.
         python3 ${projectDir}/bin/fixture_gt_extract.py --vcf ${vcf} --bed qualifying.bed --out gt.tsv
     fi
 
     ${projectDir}/bin/build_carrier_matrix.py \\
         --gt gt.tsv \\
-        --clinvar ${clinvar_tsv} \\
-        --acmg ${acmg_tsv} \\
-        --am ${am_tsv} \\
+        ${has_cv} ${has_ac} ${has_am} \\
         ${keep_arg} \\
         --out-long ${chunk_id}.carrier_matrix.tsv
     """

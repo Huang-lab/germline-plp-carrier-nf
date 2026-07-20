@@ -22,8 +22,12 @@ def build_csq(alt: str, syn: str) -> str:
     while len(parts) < 8:
         parts.append("")
     symbol, cons, am, lof, cnsig, crev, gaf, gmax = parts[:8]
+    # VEP URL-encodes commas in CSQ subfield values so `,` can remain the
+    # annotation separator. Match that behavior in the fixture.
+    def enc(s: str) -> str:
+        return s.replace(",", "%2C")
     fields = [alt, cons, "MODERATE", symbol, f"ENSG_{symbol}", "Transcript", f"ENST_{symbol}",
-              "protein_coding", "1", lof, "", am, "", cnsig, crev, gaf, gmax]
+              "protein_coding", "1", lof, "", am, "", enc(cnsig), enc(crev), gaf, gmax]
     return "|".join(fields)
 
 

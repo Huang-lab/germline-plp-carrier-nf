@@ -11,7 +11,7 @@ import sys
 
 from plp_rules.config import AlphaMissenseParams
 from plp_rules.alphamissense import is_plp, load_calibration_tsv, normalize_strength
-from plp_rules.csq import parse_csq_format
+from plp_rules.csq import parse_csq_format, decode_csq_field
 
 
 def _open(path: str):
@@ -65,7 +65,7 @@ def main() -> int:
                 continue
             first = csq.split(",", 1)[0].split("|")
             def _g(i: int) -> str:
-                return first[i] if i < len(first) else ""
+                return decode_csq_field(first[i]) if i < len(first) else ""
             gene = _g(idx_sym)
             am_raw = _g(idx_am)
             try:

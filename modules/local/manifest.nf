@@ -4,6 +4,7 @@ process MANIFEST {
     val vep_cache_version
     val clinvar_release
     val gnomad_version
+    val classifiers_csv
 
     output:
     path("manifest.json")
@@ -17,6 +18,7 @@ process MANIFEST {
         --clinvar-release "${clinvar_release ?: ''}" \\
         --gnomad-version "${gnomad_version ?: ''}" \\
         --am-calibration-version "user-supplied" \\
+        --classifiers "${classifiers_csv}" \\
         --out manifest.json
     """
 }

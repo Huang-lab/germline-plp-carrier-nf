@@ -15,7 +15,7 @@ import json
 import sys
 from typing import Iterator, Optional
 
-from plp_rules.config import ValidateParams
+from plp_rules.config import ValidateParams, parse_classifiers, required_csq_for
 from plp_rules.csq import validate_chunk
 
 
@@ -51,7 +51,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--vcf", required=True)
     ap.add_argument("--min-symbol-fraction", type=float, default=None)
-    ap.add_argument("--required", nargs="*", default=None)
+    ap.add_argument("--required", nargs="*", default=None,
+                    help="Explicit list of required CSQ subfields; overrides --classifiers")
+    ap.add_argument("--classifiers", default=None,
+                    help="Comma-separated: clinvar,acmg,am — determines required CSQ subfields")
     args = ap.parse_args()
 
     csq_header_desc: Optional[str] = None
@@ -71,6 +74,8 @@ def main() -> int:
         kw["min_symbol_fraction"] = args.min_symbol_fraction
     if args.required:
         kw["required_csq_fields"] = tuple(args.required)
+    elif args.classifiers:
+        kw["required_csq_fields"] = required_csq_for(parse_classifiers(args.classifiers))
     params = ValidateParams(**kw)
     ok, errs = validate_chunk(csq_header_desc, csqs, params)
     print(json.dumps({"ok": ok, "errors": errs, "n_records": len(csqs)}))

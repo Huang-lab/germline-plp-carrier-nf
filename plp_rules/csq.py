@@ -9,6 +9,14 @@ from .config import ValidateParams
 _FORMAT_RE = re.compile(r"Format:\s*([A-Za-z0-9_|\-\.]+)")
 
 
+def decode_csq_field(s: str) -> str:
+    """URL-decode a VEP CSQ subfield value (VEP encodes at least ',' as %2C)."""
+    if not s:
+        return s
+    return (s.replace("%3B", ";").replace("%3D", "=")
+             .replace("%25", "%").replace("%2C", ","))
+
+
 @dataclass(frozen=True)
 class CSQSchema:
     fields: tuple[str, ...]
@@ -50,7 +58,7 @@ def symbol_populated_fraction(csq_values: Iterable[str], schema: CSQSchema) -> f
         first = raw.split(",", 1)[0]
         parts = first.split("|")
         total += 1
-        if idx < len(parts) and parts[idx].strip():
+        if idx < len(parts) and decode_csq_field(parts[idx]).strip():
             with_sym += 1
     if total == 0:
         return 0.0

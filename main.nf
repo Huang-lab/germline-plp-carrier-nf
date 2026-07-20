@@ -9,14 +9,37 @@ include { ALPHAMISSENSE_CLASSIFY } from './modules/local/alphamissense_classify.
 include { ACMG_ANNOVAR_INTERVAR }  from './modules/local/acmg_annovar_intervar.nf'
 include { PER_GENE_QC }            from './modules/local/per_gene_qc.nf'
 include { CARRIER_MATRIX }         from './modules/local/carrier_matrix.nf'
+include { CONCAT_CARRIER_MATRIX }  from './modules/local/concat_carrier_matrix.nf'
 include { MANIFEST }               from './modules/local/manifest.nf'
+
+
+// --- helpers -----------------------------------------------------------------
+def parseClassifiers(spec) {
+    if (spec == null || spec == '' || (spec instanceof List && spec.isEmpty()))
+        return ['clinvar','acmg','am']
+    def parts = (spec instanceof List) ? spec : spec.toString().split(',').collect{ it.trim().toLowerCase() }
+    parts = parts.findAll{ it }
+    def valid = ['clinvar','acmg','am']
+    parts.each { if (!valid.contains(it)) error "Unknown classifier: '${it}'. Valid: ${valid}" }
+    return valid.findAll{ parts.contains(it) }
+}
+
+// Optional-file sentinel: an empty file that build_carrier_matrix ignores.
+// Avoids the "placeholder text read as IDs" bug of prior EMPTY_PLACEHOLDER.
+def optionalFile(p) {
+    if (p) return file(p)
+    def sentinel = file("${workflow.workDir}/.empty_input")
+    if (!sentinel.exists()) { sentinel.text = '' }
+    return sentinel
+}
 
 
 workflow {
     if (!params.input_vcfs)      { error "Missing required param: --input_vcfs" }
     if (!params.reference_fasta) { error "Missing required param: --reference_fasta" }
 
-    def optional_path = { p -> p ? file(p) : file("${projectDir}/tests/synthetic/EMPTY_PLACEHOLDER") }
+    def classifiers = parseClassifiers(params.classifiers)
+    log.info "germline-plp-carrier-nf: classifiers = ${classifiers}"
 
     Channel.fromPath(params.input_vcfs, checkIfExists: true)
         .map { f -> tuple(f.baseName.replaceAll(/\.vcf(\.gz)?$/, ''), f) }
@@ -26,48 +49,63 @@ workflow {
 
     VEP_ANNOTATE(
         NORM_QC.out.vcf,
-        optional_path(params.vep_cache_dir),
+        optionalFile(params.vep_cache_dir),
         file(params.reference_fasta),
-        optional_path(params.clinvar_vcf),
-        optional_path(params.gnomad_vcf),
-        optional_path(params.am_data_tsv),
-        optional_path(params.am_plugin_pm),
-        optional_path(params.loftee_data_dir),
+        optionalFile(params.clinvar_vcf),
+        optionalFile(params.gnomad_vcf),
+        optionalFile(params.am_data_tsv),
+        optionalFile(params.am_plugin_pm),
+        optionalFile(params.loftee_data_dir),
     )
 
-    VALIDATE_CHUNK(VEP_ANNOTATE.out.vcf)
+    VALIDATE_CHUNK(VEP_ANNOTATE.out.vcf, classifiers.join(','))
 
-    CLINVAR_CLASSIFY(VALIDATE_CHUNK.out.vcf)
-    ALPHAMISSENSE_CLASSIFY(VALIDATE_CHUNK.out.vcf, optional_path(params.am_calibration_tsv))
-    ACMG_ANNOVAR_INTERVAR(
-        VALIDATE_CHUNK.out.vcf,
-        optional_path(params.annovar_dir),
-        optional_path(params.annovar_humandb),
-        optional_path(params.intervar_dir),
-        optional_path(params.intervar_config),
-    )
+    // Empty channel emitting an empty file per chunk — used when a classifier is off.
+    def empty_ch = { VALIDATE_CHUNK.out.vcf.map { id, vcf -> file("${workflow.workDir}/.empty_${id}") } }
 
-    // Per-chunk join keeps each chunk's classifications together.
+    def clinvar_tsv_ch = classifiers.contains('clinvar')
+        ? CLINVAR_CLASSIFY(VALIDATE_CHUNK.out.vcf).tsv
+        : empty_ch()
+    def am_tsv_ch = classifiers.contains('am')
+        ? ALPHAMISSENSE_CLASSIFY(VALIDATE_CHUNK.out.vcf, optionalFile(params.am_calibration_tsv)).tsv
+        : empty_ch()
+    def acmg_tsv_ch = classifiers.contains('acmg')
+        ? ACMG_ANNOVAR_INTERVAR(
+              VALIDATE_CHUNK.out.vcf,
+              optionalFile(params.annovar_dir),
+              optionalFile(params.annovar_humandb),
+              optionalFile(params.intervar_dir),
+              optionalFile(params.intervar_config),
+          ).tsv
+        : empty_ch()
+
+    // Per-chunk join: tuple(chunk_id, vcf, clinvar_tsv, acmg_tsv, am_tsv)
+    // Each classifier TSV filename encodes the chunk_id as basename prefix.
+    def keyByChunk = { ch, suffix ->
+        ch.map { f -> tuple(f.baseName.replaceAll(suffix, ''), f) }
+    }
     def per_chunk = VALIDATE_CHUNK.out.vcf
-        .join(CLINVAR_CLASSIFY.out.tsv.map { f -> tuple(f.baseName.replaceAll(/\.clinvar_plp$/, ''), f) })
-        .join(ACMG_ANNOVAR_INTERVAR.out.tsv.map { f -> tuple(f.baseName.replaceAll(/\.acmg_plp$/, ''), f) })
-        .join(ALPHAMISSENSE_CLASSIFY.out.tsv.map { f -> tuple(f.baseName.replaceAll(/\.am_plp$/, ''), f) })
+        .join(keyByChunk(clinvar_tsv_ch, /\.clinvar_plp$/))
+        .join(keyByChunk(acmg_tsv_ch,    /\.acmg_plp$/))
+        .join(keyByChunk(am_tsv_ch,      /\.am_plp$/))
 
-    // Split into typed channels for downstream processes.
     per_chunk.map { id, vcf, cv, ac, am -> tuple(id, vcf) }.set { pc_vcf }
     per_chunk.map { id, vcf, cv, ac, am -> cv }.set { pc_cv }
     per_chunk.map { id, vcf, cv, ac, am -> ac }.set { pc_ac }
     per_chunk.map { id, vcf, cv, ac, am -> am }.set { pc_am }
 
-    PER_GENE_QC(pc_vcf, pc_cv, pc_ac, pc_am)
+    PER_GENE_QC(pc_vcf, pc_cv, pc_ac, pc_am, classifiers.join(','))
 
-    def keep = params.keep_samples ? file(params.keep_samples) : file("${projectDir}/tests/synthetic/EMPTY_PLACEHOLDER")
-    CARRIER_MATRIX(pc_vcf, pc_cv, pc_ac, pc_am, keep)
+    CARRIER_MATRIX(pc_vcf, pc_cv, pc_ac, pc_am,
+                   optionalFile(params.keep_samples), classifiers.join(','))
+
+    CONCAT_CARRIER_MATRIX(CARRIER_MATRIX.out.long_tsv.collect())
 
     MANIFEST(
         workflow.commitId ?: '',
         params.vep_cache_version ?: '',
         params.clinvar_release ?: '',
         params.gnomad_version ?: '',
+        classifiers.join(','),
     )
 }

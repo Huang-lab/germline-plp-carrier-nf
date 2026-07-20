@@ -54,6 +54,18 @@ zgrep -m1 '^##INFO=<ID=AF_grpmax' $RESOURCES_DIR/gnomad/gnomad.exomes.v4.1.sites
 Adjust `params.gnomad_popmax_field` if the field is named differently in the
 release you use.
 
+## 6a. (Optional) Run a single classifier
+To validate the ClinVar-only path first (fastest; needs no ANNOVAR or
+AlphaMissense data):
+
+```bash
+nextflow run . -profile minerva -params-file params/msm.yaml \
+    --classifiers clinvar \
+    --input_vcfs '/sc/arion/projects/CHANGEME/msm/wes/pvcf_chunks/chr21.*.vcf.gz'
+```
+
+Any subset of `clinvar,acmg,am` is valid.
+
 ## 7. Submit the Nextflow driver as an LSF job
 Do NOT run the driver on a login node. Use `run_minerva.lsf`:
 
