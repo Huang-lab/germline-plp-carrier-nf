@@ -16,17 +16,28 @@ set -euo pipefail
 ml java anaconda3 singularity-ce
 source activate nextflow  # conda env, not the site nextflow module
 
-# Minerva compute nodes usually have direct internet access; do NOT set a
-# proxy here unless HPC support has told you a specific one is required.
-# If your subnet needs one, export http_proxy/https_proxy/no_proxy before
-# submitting so envWhitelist in conf/minerva.config passes them into containers.
+# Proxy REQUIRED on Minerva (nf-core mssm doc). Needed for LSF child submission
+# and any outbound network.
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 
-mkdir -p logs
+# Do not let Nextflow phone home (nextflow.io is unreachable from compute nodes
+# and stalls startup). Containers are local .sif files, so nothing is pulled.
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+export SINGULARITY_CACHEDIR="/sc/arion/work/${USER}/singularity_cache"
+export SINGULARITY_TMPDIR="/sc/arion/work/${USER}/singularity_tmp"
 
-# Choose cohort by symlink or by -params-file <cohort>.yaml at submit time.
+mkdir -p logs "$SINGULARITY_CACHEDIR" "$SINGULARITY_TMPDIR"
+
+# Choose cohort by -params-file <cohort>.yaml; classifiers via --classifiers.
 PARAMS_FILE="${PARAMS_FILE:-params/msm.yaml}"
+CLASSIFIERS="${CLASSIFIERS:-clinvar}"
 
 nextflow run . \
     -profile minerva \
     -params-file "$PARAMS_FILE" \
+    --classifiers "$CLASSIFIERS" \
     -resume

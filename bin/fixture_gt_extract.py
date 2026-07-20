@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
-"""Test-only: extract per-sample GTs directly from a fixture VCF (no bcftools).
+"""Extract per-sample GTs from a (optionally bgzipped) VCF without bcftools.
+
+Used by CARRIER_MATRIX as the production GT-extraction path so the process
+needs only python3 (one container), not bcftools+python together. Handles
+multi-sample real pVCF chunks.
 
 Emits chr\tpos\tref\talt\tsample\tGT rows for records whose (chr,pos) fall in
-the qualifying BED. Ignores DP/GQ/AD (already applied earlier in the fallback
-NORM_QC path)."""
+the qualifying BED. Genotype QC (DP/GQ/AB) is already applied upstream in
+NORM_QC, so only GT is read here."""
 from __future__ import annotations
 import argparse
+import gzip
+import io
 import sys
+
+
+def _open(path: str):
+    if path.endswith(".gz") or path.endswith(".bgz"):
+        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8")
+    return open(path, "r", encoding="utf-8")
 
 
 def _load_bed(path: str) -> set[tuple[str, int]]:
@@ -33,7 +45,7 @@ def main() -> int:
     keep = _load_bed(args.bed)
     samples: list[str] = []
 
-    with open(args.vcf, "r", encoding="utf-8") as fh, open(args.out, "w", encoding="utf-8") as out:
+    with _open(args.vcf) as fh, open(args.out, "w", encoding="utf-8") as out:
         for line in fh:
             if line.startswith("##"):
                 continue

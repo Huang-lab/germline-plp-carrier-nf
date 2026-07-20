@@ -27,9 +27,14 @@ annovar_humandb: '/sc/arion/work/USER/germline-plp-refs/humandb'
 intervar_dir:    '/sc/arion/work/USER/germline-plp-refs/InterVar'
 intervar_config: '/sc/arion/work/USER/germline-plp-refs/InterVar/config.ini'
 
-# Containers
-container_annotate:         '/sc/arion/work/USER/singularity_cache/annotate.sif'
-container_annovar_intervar: '/sc/arion/work/USER/singularity_cache/annovar_intervar.sif'
+# Containers — absolute paths to .sif files pulled once on a COMPUTE node
+# (login nodes hit a thread limit during OCI->SIF conversion). See
+# docs/RUNNING_ON_MINERVA.md. Leave a value null to let Nextflow pull the
+# docker:// default itself.
+container_vep:              '/sc/arion/work/USER/singularity_cache/ensembl-vep_release_113.0.sif'
+container_bcftools:         '/sc/arion/work/USER/singularity_cache/bcftools_1.20.sif'
+container_python:           '/sc/arion/work/USER/singularity_cache/python_3.11-slim.sif'
+container_annovar_intervar: null   # ACMG only; not needed for ClinVar-only runs
 
 # Thresholds
 min_dp: 10
