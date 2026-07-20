@@ -34,9 +34,20 @@ def optionalFile(p) {
 }
 
 
+// A required path param must be a non-empty string. A Boolean (e.g. `--flag`
+// with no value) or null is an error with a clear message.
+def requirePath(name, val) {
+    if (val == null || val instanceof Boolean || val.toString().trim() == '') {
+        error "Param --${name} must be a path/glob string, got: ${val}. " +
+              "If launching via LSF, the value may have been lost — pass the " +
+              "literal path (do not rely on an un-exported shell variable)."
+    }
+    return val.toString()
+}
+
 workflow {
-    if (!params.input_vcfs)      { error "Missing required param: --input_vcfs" }
-    if (!params.reference_fasta) { error "Missing required param: --reference_fasta" }
+    requirePath('input_vcfs', params.input_vcfs)
+    requirePath('reference_fasta', params.reference_fasta)
 
     def classifiers = parseClassifiers(params.classifiers)
     log.info "germline-plp-carrier-nf: classifiers = ${classifiers}"
