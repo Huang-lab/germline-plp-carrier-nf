@@ -15,6 +15,8 @@ import json
 import sys
 from typing import Iterator, Optional
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.realpath(__file__))))
 from plp_rules.config import ValidateParams, parse_classifiers, required_csq_for
 from plp_rules.csq import validate_chunk
 

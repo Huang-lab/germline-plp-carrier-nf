@@ -9,6 +9,8 @@ import gzip
 import io
 import sys
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.realpath(__file__))))
 from plp_rules.config import ClinVarParams
 from plp_rules.clinvar import parse_stars, is_plp
 from plp_rules.csq import parse_csq_format, decode_csq_field
