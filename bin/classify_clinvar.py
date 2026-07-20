@@ -11,7 +11,7 @@ import sys
 
 from plp_rules.config import ClinVarParams
 from plp_rules.clinvar import parse_stars, is_plp
-from plp_rules.csq import parse_csq_format
+from plp_rules.csq import parse_csq_format, decode_csq_field
 
 
 def _open(path: str):
@@ -58,7 +58,7 @@ def main() -> int:
                 continue
             first = csq.split(",", 1)[0].split("|")
             def _g(i: int) -> str:
-                return first[i] if i < len(first) else ""
+                return decode_csq_field(first[i]) if i < len(first) else ""
             gene = _g(idx_sym)
             clnsig = _g(idx_sig)
             revstat = _g(idx_rev)

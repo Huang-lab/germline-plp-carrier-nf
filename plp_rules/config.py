@@ -37,6 +37,40 @@ class ValidateParams:
     variant_count_ratio_max: float = 1.10
 
 
+# Per-classifier CSQ subfield requirements. Union of the selected set is what
+# validate_chunk enforces.
+CLASSIFIER_CSQ_REQUIREMENTS: dict[str, tuple[str, ...]] = {
+    "clinvar": ("SYMBOL", "Consequence", "ClinVar_CLNSIG", "ClinVar_CLNREVSTAT"),
+    "acmg":    ("SYMBOL", "Consequence", "gnomAD_AF", "gnomAD_AF_grpmax"),
+    "am":      ("SYMBOL", "Consequence", "am_pathogenicity"),
+}
+VALID_CLASSIFIERS = ("clinvar", "acmg", "am")
+
+
+def parse_classifiers(spec: str | list | tuple | None) -> tuple[str, ...]:
+    if spec is None or spec == "" or spec == []:
+        return VALID_CLASSIFIERS
+    if isinstance(spec, (list, tuple)):
+        parts = [str(x).strip().lower() for x in spec]
+    else:
+        parts = [p.strip().lower() for p in str(spec).split(",")]
+    parts = [p for p in parts if p]
+    for p in parts:
+        if p not in VALID_CLASSIFIERS:
+            raise ValueError(f"Unknown classifier: {p!r}. Valid: {VALID_CLASSIFIERS}")
+    # Preserve stable order (matches VALID_CLASSIFIERS) and de-dup.
+    return tuple(c for c in VALID_CLASSIFIERS if c in parts)
+
+
+def required_csq_for(classifiers: tuple[str, ...]) -> tuple[str, ...]:
+    seen: list[str] = []
+    for c in classifiers:
+        for f in CLASSIFIER_CSQ_REQUIREMENTS[c]:
+            if f not in seen:
+                seen.append(f)
+    return tuple(seen)
+
+
 @dataclass(frozen=True)
 class Params:
     qc: QCThresholds = field(default_factory=QCThresholds)

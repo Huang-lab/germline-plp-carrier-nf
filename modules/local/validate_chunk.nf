@@ -3,6 +3,7 @@ process VALIDATE_CHUNK {
 
     input:
     tuple val(chunk_id), path(vcf)
+    val classifiers_csv
 
     output:
     tuple val(chunk_id), path(vcf), emit: vcf
@@ -14,6 +15,7 @@ process VALIDATE_CHUNK {
     ${projectDir}/bin/validate_chunk.py \\
         --vcf ${vcf} \\
         --min-symbol-fraction ${params.min_symbol_fraction} \\
+        --classifiers "${classifiers_csv}" \\
         > ${chunk_id}.validate.json
     """
 }

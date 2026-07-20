@@ -1,0 +1,16 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##INFO=<ID=SYN,Number=.,Type=String,Description="Synthetic fixture annotations: SYMBOL|Consequence|am_pathogenicity|LoF|CLNSIG|CLNREVSTAT|gnomAD_AF|gnomAD_AF_grpmax|ACMG_LABEL">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depths">
+##contig=<ID=chr21,length=48129895>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SYNTH_A	SYNTH_B	SYNTH_C	SYNTH_D	SYNTH_E
+chr21	10000100	.	A	T	100	PASS	SYN=FAKE_BRCA_LIKE|missense_variant|.|.|Pathogenic|reviewed_by_expert_panel|0.00001|0.00002|.	GT:DP:GQ:AD	0/1:40:60:20,20	0/0:35:60:35,0	1/1:38:60:0,38	0/1:15:20:8,7	0/0:40:60:40,0
+chr21	10000200	.	G	C	100	PASS	SYN=FAKE_BRCA_LIKE|missense_variant|.|.|Likely_pathogenic|criteria_provided,_multiple_submitters,_no_conflicts|0.0001|0.00015|.	GT:DP:GQ:AD	0/1:30:60:15,15	0/1:30:60:15,15	0/0:30:60:30,0	0/0:30:60:30,0	1/1:30:60:0,30
+chr21	10000300	.	C	A	100	PASS	SYN=FAKE_TP53_LIKE|stop_gained|.|.|Pathogenic|criteria_provided,_multiple_submitters,_no_conflicts|0.000005|0.000008|.	GT:DP:GQ:AD	0/0:40:60:40,0	0/1:40:60:20,20	0/0:40:60:40,0	0/0:40:60:40,0	0/1:40:60:20,20
+chr21	10000400	.	T	G	100	PASS	SYN=FAKE_LOWSTAR|missense_variant|.|.|Pathogenic|criteria_provided,_single_submitter|0.001|0.002|.	GT:DP:GQ:AD	0/1:40:60:20,20	0/0:40:60:40,0	0/1:40:60:20,20	1/1:40:60:0,40	0/0:40:60:40,0
+chr21	10000500	.	A	G	100	PASS	SYN=FAKE_VUS|missense_variant|.|.|Uncertain_significance|criteria_provided,_multiple_submitters,_no_conflicts|0.005|0.008|.	GT:DP:GQ:AD	0/0:30:60:30,0	0/1:30:60:15,15	0/0:30:60:30,0	0/1:30:60:15,15	0/0:30:60:30,0
+chr21	10000600	.	C	T	100	PASS	SYN=FAKE_BENIGN|missense_variant|.|.|Benign|criteria_provided,_multiple_submitters,_no_conflicts|0.30|0.35|.	GT:DP:GQ:AD	0/1:30:60:15,15	1/1:30:60:0,30	0/1:30:60:15,15	1/1:30:60:0,30	0/1:30:60:15,15
+chr21	10000700	.	G	A	100	PASS	SYN=FAKE_CONFLICT|missense_variant|.|.|Pathogenic,Benign|criteria_provided,_multiple_submitters,_no_conflicts|0.01|0.02|.	GT:DP:GQ:AD	0/1:30:60:15,15	0/0:30:60:30,0	0/1:30:60:15,15	0/0:30:60:30,0	0/0:30:60:30,0

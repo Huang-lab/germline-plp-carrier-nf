@@ -1,6 +1,13 @@
 import pytest
-from plp_rules.csq import parse_csq_format, check_required_fields, symbol_populated_fraction, validate_chunk
+from plp_rules.csq import parse_csq_format, check_required_fields, symbol_populated_fraction, validate_chunk, decode_csq_field
 from plp_rules.config import ValidateParams
+
+
+def test_decode_csq_field_commas():
+    assert decode_csq_field("criteria_provided%2C_multiple_submitters%2C_no_conflicts") \
+        == "criteria_provided,_multiple_submitters,_no_conflicts"
+    assert decode_csq_field("") == ""
+    assert decode_csq_field("nochange") == "nochange"
 
 
 CSQ_HEADER = (

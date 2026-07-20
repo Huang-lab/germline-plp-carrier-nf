@@ -6,6 +6,7 @@ process PER_GENE_QC {
     path clinvar_tsv
     path acmg_tsv
     path am_tsv
+    val classifiers_csv
 
     output:
     path("${chunk_id}.qc_per_gene.tsv"), emit: tsv
@@ -14,13 +15,16 @@ process PER_GENE_QC {
     """
     set -euo pipefail
     python3 - <<'PY'
-import csv
+import csv, os
 from collections import Counter
-counts = Counter()
-plps = Counter()
+inputs = []
 for path, flag in [("${clinvar_tsv}", "is_clinvar_PLP"),
-                   ("${acmg_tsv}", "is_acmg_PLP"),
-                   ("${am_tsv}", "is_AM_PLP")]:
+                   ("${acmg_tsv}",    "is_acmg_PLP"),
+                   ("${am_tsv}",      "is_AM_PLP")]:
+    if path and os.path.exists(path) and os.path.getsize(path) > 0:
+        inputs.append((path, flag))
+counts = Counter(); plps = Counter()
+for path, flag in inputs:
     with open(path) as fh:
         r = csv.DictReader(fh, delimiter="\\t")
         for row in r:

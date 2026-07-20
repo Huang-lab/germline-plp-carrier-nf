@@ -15,14 +15,33 @@ per-person carrier matrices under three P/LP definitions.
 - **ANNOVAR is user-supplied.** Not vendored. The container builds from your
   registration-gated tarball on Minerva and is never pushed publicly.
 
+## Choosing classifiers
+`params.classifiers` picks which P/LP definitions run. Any subset of
+`clinvar`, `acmg`, `am`. Comma-separated string or Groovy list. Default: all
+three. Examples:
+
+```bash
+nextflow run . -profile minerva -params-file params/msm.yaml --classifiers clinvar
+nextflow run . -profile minerva -params-file params/msm.yaml \
+    -params-file params/clinvar_only.yaml
+```
+
+`VALIDATE_CHUNK` only enforces CSQ subfields required by the selected
+classifiers, so a ClinVar-only run does not need `am_pathogenicity` or gnomAD
+fields in the annotated VCF.
+
 ## Quick start (local, no real data required)
 ```bash
 # Unit tests
 pip install pytest
 python -m pytest tests/ -q
 
-# DAG smoke test on synthetic fixtures
+# DAG smoke test on synthetic fixtures (Nextflow)
 nextflow run . -profile test
+
+# Same, without Nextflow (script emulates each process — used in authoring env)
+tests/synthetic/run_dag_smoke.sh            # all three classifiers
+tests/synthetic/run_clinvar_only_smoke.sh   # ClinVar only, chr21 fixture
 ```
 
 ## Real runs (Minerva)

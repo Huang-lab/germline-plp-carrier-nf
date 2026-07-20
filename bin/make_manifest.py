@@ -27,6 +27,7 @@ def main() -> int:
     ap.add_argument("--am-data-version", default="")
     ap.add_argument("--am-calibration-version", default="")
     ap.add_argument("--container-digests", default="")
+    ap.add_argument("--classifiers", default="")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -40,6 +41,7 @@ def main() -> int:
             "calibration_version": args.am_calibration_version,
         },
         "container_digests": args.container_digests,
+        "classifiers": [c.strip() for c in args.classifiers.split(",") if c.strip()],
         "pipeline_git_sha": args.pipeline_sha,
         "resource_versions_raw": _safe_read(args.versions_file),
     }

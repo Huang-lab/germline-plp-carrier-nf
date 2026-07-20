@@ -38,22 +38,28 @@ def _load_classification(path: str, flag_col: str) -> tuple[dict, dict]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gt", required=True)
-    ap.add_argument("--clinvar", required=True)
-    ap.add_argument("--acmg", required=True)
-    ap.add_argument("--am", required=True)
+    ap.add_argument("--clinvar", default="")
+    ap.add_argument("--acmg", default="")
+    ap.add_argument("--am", default="")
     ap.add_argument("--keep", default="")
     ap.add_argument("--out-long", required=True)
     ap.add_argument("--out-wide", default="")
     args = ap.parse_args()
 
-    cv_flags, cv_genes = _load_classification(args.clinvar, "is_clinvar_PLP")
-    ac_flags, ac_genes = _load_classification(args.acmg, "is_acmg_PLP")
-    am_flags, am_genes = _load_classification(args.am, "is_AM_PLP")
+    cv_flags, cv_genes = (_load_classification(args.clinvar, "is_clinvar_PLP") if args.clinvar else ({}, {}))
+    ac_flags, ac_genes = (_load_classification(args.acmg, "is_acmg_PLP") if args.acmg else ({}, {}))
+    am_flags, am_genes = (_load_classification(args.am, "is_AM_PLP") if args.am else ({}, {}))
 
     keep: set[str] | None = None
     if args.keep:
-        with open(args.keep, "r", encoding="utf-8") as fh:
-            keep = {ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")}
+        try:
+            with open(args.keep, "r", encoding="utf-8") as fh:
+                lines = [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
+            # Ignore obviously-non-ID single-line "placeholder"/"none" markers.
+            if lines and lines != ["none"] and lines != ["all"]:
+                keep = set(lines)
+        except OSError:
+            keep = None
 
     qualifying: set = set()
     for k, v in cv_flags.items():

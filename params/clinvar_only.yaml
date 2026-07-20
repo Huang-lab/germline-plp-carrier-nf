@@ -1,0 +1,7 @@
+# Overlay: run the ClinVar-only classifier path.
+# Use ON TOP OF a cohort file, e.g.:
+#   nextflow run . -profile minerva \
+#       -params-file params/msm.yaml \
+#       -params-file params/clinvar_only.yaml
+
+classifiers: 'clinvar'
