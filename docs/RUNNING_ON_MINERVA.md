@@ -10,13 +10,19 @@ conda create -y -n nextflow -c bioconda nextflow=23.10.*
 conda activate nextflow
 ```
 
-## 2. Proxy (required for Singularity pulls, curl, etc.)
+## 2. Proxy (usually NOT needed)
+Minerva login/compute nodes have direct internet access. **Do not set an HTTP
+proxy** unless a login shows you're on a subnet that requires one — the
+nf-core `mssm` config also sets no proxy.
+
+If you've already exported bad values, unset them:
 ```bash
-export http_proxy=http://172.28.7.1:3128
-export https_proxy=http://172.28.7.1:3128
-export all_proxy=http://172.28.7.1:3128
-export no_proxy="*.chimera.hpc.mssm.edu,.mssm.edu,localhost,127.0.0.1"
+unset http_proxy https_proxy all_proxy no_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
+curl -sSI https://repo.anaconda.com/ | head -1   # sanity: expect HTTP/2 200
 ```
+If direct access fails on your node, ask HPC support (hpchelp@hpc.mssm.edu) for
+the current proxy for your subnet, then export those values before conda /
+`singularity build` / `setup/fetch_references.sh`.
 
 ## 3. LSF allocation
 ```bash
