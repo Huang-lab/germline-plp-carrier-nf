@@ -5,7 +5,7 @@ cohort: msm
 
 # I/O
 input_vcfs: '/sc/arion/projects/CHANGEME/msm/wes/pvcf_chunks/*.vcf.gz'
-reference_fasta: '/sc/arion/work/USER/germline-plp-refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+reference_fasta: '/sc/arion/work/USER/germline-plp-refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz'
 outdir: '/sc/arion/scratch/USER/germline-plp-carrier-nf/results-msm'
 keep_samples: '/sc/arion/projects/CHANGEME/msm/keep_samples.txt'
 

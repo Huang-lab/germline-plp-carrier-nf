@@ -68,6 +68,30 @@ reuse_or_download "$RESOURCES_DIR/vep_fasta/${FASTA_NAME}" \
     "https://ftp.ensembl.org/pub/release-${VEP_CACHE_VERSION}/fasta/homo_sapiens/dna/${FASTA_NAME}"
 echo "vep_cache=${VEP_CACHE_VERSION}" >> "$VERSIONS"
 
+# Ensembl ships the FASTA as plain gzip, but bcftools/samtools require BGZIP +
+# .fai (+ .gzi). Prepare a bgzipped, faidx'd copy. Needs bgzip + samtools:
+# provide them via $FASTA_PREP_SIF (an ensembl-vep or bcftools+samtools .sif),
+# or have them on PATH. reference_fasta in params/*.yaml must point at the .bgz.
+FASTA_BGZ="$RESOURCES_DIR/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz"
+if [ ! -s "${FASTA_BGZ}.fai" ]; then
+    prep_cmd="set -e
+        cd '$RESOURCES_DIR/vep_fasta'
+        zcat '${FASTA_NAME}' | bgzip -c > '${FASTA_BGZ}.tmp'
+        mv '${FASTA_BGZ}.tmp' '${FASTA_BGZ}'
+        samtools faidx '${FASTA_BGZ}'"
+    if [ -n "${FASTA_PREP_SIF:-}" ] && [ -s "$FASTA_PREP_SIF" ]; then
+        log "preparing bgzip+faidx FASTA via $FASTA_PREP_SIF"
+        singularity exec "$FASTA_PREP_SIF" bash -c "$prep_cmd"
+    elif command -v bgzip >/dev/null 2>&1 && command -v samtools >/dev/null 2>&1; then
+        log "preparing bgzip+faidx FASTA (host bgzip/samtools)"
+        bash -c "$prep_cmd"
+    else
+        log "WARNING: bgzip/samtools not found. Prepare the FASTA before running:"
+        log "  singularity exec <vep_or_bcftools_sif> bash -c \"zcat ${FASTA_NAME} | bgzip -c > ${FASTA_BGZ} && samtools faidx ${FASTA_BGZ}\""
+    fi
+fi
+echo "reference_fasta=${FASTA_BGZ}" >> "$VERSIONS"
+
 # --- AlphaMissense data ---
 if [ "$SKIP_AM" = "1" ]; then
     log "SKIP_AM=1 — skipping AlphaMissense downloads"
