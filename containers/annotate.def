@@ -1,0 +1,38 @@
+Bootstrap: docker
+From: mambaorg/micromamba:1.5.8
+
+%labels
+    Maintainer huang-lab
+    Purpose  "bcftools/htslib/samtools + Ensembl VEP + LOFTEE + AlphaMissense plugin + plink2 + python"
+
+%files
+    ../plp_rules /opt/plp_rules
+
+%post
+    set -euxo pipefail
+    umask 022
+
+    micromamba install -y -n base -c conda-forge -c bioconda \
+        python=3.11 pip \
+        bcftools=1.20 htslib=1.20 samtools=1.20 tabix \
+        ensembl-vep=113.0 perl \
+        loftee=1.0.4 \
+        plink2 \
+        && micromamba clean -a -y
+
+    # AlphaMissense VEP plugin: fetched at container build time from the
+    # Ensembl VEP_plugins repo (freely licensed). Runtime data (TSV+tbi) is
+    # bind-mounted at execution time via params.am_data_tsv.
+    mkdir -p /opt/vep_plugins
+    curl -fsSL -o /opt/vep_plugins/AlphaMissense.pm \
+        https://raw.githubusercontent.com/Ensembl/VEP_plugins/release/113/AlphaMissense.pm
+
+    # Install the local plp_rules package so classify_*.py can `import plp_rules`.
+    /opt/conda/bin/pip install --no-deps -e /opt/plp_rules
+
+%environment
+    export PATH=/opt/conda/bin:$PATH
+    export VEP_PLUGIN_DIR=/opt/vep_plugins
+
+%runscript
+    exec "$@"

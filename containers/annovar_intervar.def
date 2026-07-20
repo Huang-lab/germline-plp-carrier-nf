@@ -1,0 +1,49 @@
+Bootstrap: docker
+From: mambaorg/micromamba:1.5.8
+
+# BUILD-TIME ARGS (Singularity: pass via `--build-arg` on `singularity build`):
+#   ANNOVAR_TARBALL  — absolute path (on the BUILD host) to the user's
+#                      registration-gated ANNOVAR tarball
+#                      (e.g. annovar.latest.tar.gz).
+#   INTERVAR_REF     — git ref (branch/tag/SHA) for InterVar to clone.
+#                      Defaults to master.
+#
+# The tarball is expected under /tmp inside the build; %files copies it in.
+# NEVER push the resulting image to a public registry.
+
+%labels
+    Maintainer huang-lab
+    Purpose   "ANNOVAR (user-supplied) + InterVar for ACMG classification"
+    License   "ANNOVAR: academic-use registration; InterVar: MIT. Do not redistribute."
+
+%files
+    # The build script (containers/README.md) resolves ${ANNOVAR_TARBALL}
+    # and stages it here before invoking singularity build.
+    _staging/annovar.tar.gz /tmp/annovar.tar.gz
+
+%post
+    set -euxo pipefail
+    umask 022
+
+    micromamba install -y -n base -c conda-forge -c bioconda \
+        python=3.11 perl git curl \
+        && micromamba clean -a -y
+
+    mkdir -p /opt
+    tar -xzf /tmp/annovar.tar.gz -C /opt
+    rm -f /tmp/annovar.tar.gz
+    # Extraction places /opt/annovar/{annotate_variation.pl,convert2annovar.pl,table_annovar.pl,...}
+
+    # humandb download deferred to setup/setup_annovar_intervar.sh on Minerva
+    # (this container ships tools only; DBs are mounted at runtime).
+
+    git clone --depth=1 https://github.com/WGLab/InterVar.git /opt/InterVar
+    # The intervardb (small, freely available) ships in the InterVar repo.
+
+%environment
+    export PATH=/opt/conda/bin:/opt/annovar:/opt/InterVar:$PATH
+    export ANNOVAR_HOME=/opt/annovar
+    export INTERVAR_HOME=/opt/InterVar
+
+%runscript
+    exec "$@"
