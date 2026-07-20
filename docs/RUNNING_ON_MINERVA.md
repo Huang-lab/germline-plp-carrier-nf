@@ -10,19 +10,16 @@ conda create -y -n nextflow -c bioconda nextflow=23.10.*
 conda activate nextflow
 ```
 
-## 2. Proxy (usually NOT needed)
-Minerva login/compute nodes have direct internet access. **Do not set an HTTP
-proxy** unless a login shows you're on a subnet that requires one — the
-nf-core `mssm` config also sets no proxy.
-
-If you've already exported bad values, unset them:
+## 2. Proxy (REQUIRED)
+Per the nf-core `mssm` doc, Minerva requires a proxy for all outbound network
+(conda, container pulls, reference downloads). Export before any download step
+and inside every bsub:
 ```bash
-unset http_proxy https_proxy all_proxy no_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
-curl -sSI https://repo.anaconda.com/ | head -1   # sanity: expect HTTP/2 200
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 ```
-If direct access fails on your node, ask HPC support (hpchelp@hpc.mssm.edu) for
-the current proxy for your subnet, then export those values before conda /
-`singularity build` / `setup/fetch_references.sh`.
 
 ## 3. LSF allocation
 ```bash
@@ -47,25 +44,43 @@ Then supply the AlphaMissense gene-specific calibration TSV (Chen/Pejaver
 2026) yourself and set `params.am_calibration_tsv` to its path in
 `params/<cohort>.yaml`.
 
-## 5. Containers (biocontainers, no build required)
-By default `conf/minerva.config` points each process at a **pre-built public
-Docker image**, and Singularity pulls it on first use into
-`$SINGULARITY_CACHEDIR`. No `singularity build` step is needed — this
-sidesteps Minerva's no-fakeroot restriction.
+## 5. Containers — pull public images ON A COMPUTE NODE
+Minerva does not permit `singularity build` (no fakeroot). Instead, pull three
+pre-built public images. **Login nodes cap per-user threads and crash during
+OCI→SIF conversion** (`FATAL ERROR: Failed to create thread`), so pull from a
+compute node via an interactive job:
 
-Defaults:
-- `withLabel: vep` → `docker://ensemblorg/ensembl-vep:release_113.0`
-- `withLabel: bcf` → `docker://staphb/bcftools:1.20`
-- `withLabel: py`  → `docker://python:3.11-slim`
-- `withLabel: annovar` → user-supplied (only needed for ACMG classifier)
+```bash
+bsub -P $MINERVA_ALLOCATION -q premium -n 4 -W 2:00 \
+     -R "rusage[mem=16000] span[hosts=1]" -Is bash
 
-First pipeline run will pull these once (~10 min total, one-time cost).
+# inside the interactive shell:
+ml singularity-ce
+export SINGULARITY_CACHEDIR=/sc/arion/work/$USER/singularity_cache
+export SINGULARITY_TMPDIR=/sc/arion/work/$USER/singularity_tmp
+mkdir -p $SINGULARITY_CACHEDIR $SINGULARITY_TMPDIR
+export http_proxy=http://172.28.7.1:3128 https_proxy=http://172.28.7.1:3128 all_proxy=http://172.28.7.1:3128
 
-**Optional:** If you'd rather build a custom image, `containers/annotate.def`
-still exists; build it with `singularity build --fakeroot` (only works if
-fakeroot is enabled for your account) or `--remote` (Sylabs cloud), then set
-`params.container_annotate` to the .sif path — it overrides the biocontainer
-default for `vep/bcf/py` labels.
+singularity pull $SINGULARITY_CACHEDIR/ensembl-vep_release_113.0.sif docker://ensemblorg/ensembl-vep:release_113.0
+singularity pull $SINGULARITY_CACHEDIR/bcftools_1.20.sif             docker://staphb/bcftools:1.20
+singularity pull $SINGULARITY_CACHEDIR/python_3.11-slim.sif          docker://python:3.11-slim
+ls -lh $SINGULARITY_CACHEDIR/*.sif
+exit
+```
+
+Then point `params/<cohort>.yaml` at the absolute `.sif` paths:
+```yaml
+container_vep:      '/sc/arion/work/<USER>/singularity_cache/ensembl-vep_release_113.0.sif'
+container_bcftools: '/sc/arion/work/<USER>/singularity_cache/bcftools_1.20.sif'
+container_python:   '/sc/arion/work/<USER>/singularity_cache/python_3.11-slim.sif'
+```
+Referencing local `.sif` files (not `docker://` URLs) means Nextflow reuses the
+images directly — no re-pull, no cache-name mismatch, works offline.
+
+Process→image map: NORM_QC→bcftools, VEP_ANNOTATE→vep, everything else→python.
+
+**ACMG only:** also build/supply `container_annovar_intervar`. Not needed for
+ClinVar-only or AlphaMissense-only runs.
 
 ## 6. Verify the gnomAD popmax field name
 Confirm the popmax AF field name in the real gnomAD v4 VCF header on Minerva:
@@ -90,20 +105,33 @@ nextflow run . -profile minerva -params-file params/msm.yaml \
 Any subset of `clinvar,acmg,am` is valid.
 
 ## 7. Submit the Nextflow driver as an LSF job
-Do NOT run the driver on a login node. Use `run_minerva.lsf`:
+Do NOT run the driver on a login node. The driver's bsub MUST export the proxy
+(so LSF child submission works) and `NXF_OFFLINE=true` (so Nextflow does not try
+to reach nextflow.io on startup — that call fails on compute nodes and stalls
+the run). Use `run_minerva.lsf`, or submit inline:
 
 ```bash
-bsub -P $MINERVA_ALLOCATION < run_minerva.lsf
+SMALLEST=$(ls -Sr $INPUT_DIR/*.vcf.gz | head -1)   # pilot: smallest chunk
+bsub -P $MINERVA_ALLOCATION -q premium -n 2 -W 24:00 \
+     -R "rusage[mem=8000] span[hosts=1]" \
+     -J plp-pilot -oo logs/pilot.%J.out -eo logs/pilot.%J.err <<EOF
+ml java anaconda3 singularity-ce
+source activate nextflow
+export MINERVA_ALLOCATION=$MINERVA_ALLOCATION
+export SINGULARITY_CACHEDIR=/sc/arion/work/\$USER/singularity_cache
+export SINGULARITY_TMPDIR=/sc/arion/work/\$USER/singularity_tmp
+export http_proxy=http://172.28.7.1:3128 https_proxy=http://172.28.7.1:3128 all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+cd $ROOT/germline-plp-carrier-nf
+nextflow run . -profile minerva -params-file params/msm.yaml \\
+    --classifiers clinvar --input_vcfs "\$SMALLEST" --outdir "$ROOT/results-pilot"
+EOF
 ```
 
-The driver fans each process out as its own child bsub. First validate a
-single chunk before scaling:
-
-```bash
-# Single-chunk validation
-nextflow run . -profile minerva -params-file params/msm.yaml \
-    --input_vcfs '/sc/arion/projects/CHANGEME/msm/wes/pvcf_chunks/chunk_001.vcf.gz'
-```
+After the pilot succeeds, run all chunks: drop `--input_vcfs`/`--outdir` (they
+come from the params file) and add `-resume`.
 
 ## 8. Output check
 ```bash
