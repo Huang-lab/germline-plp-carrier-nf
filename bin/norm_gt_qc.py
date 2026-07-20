@@ -12,6 +12,8 @@ plp_rules.qc.genotype_passes) can also drive a fallback path or be tested.
 from __future__ import annotations
 import argparse
 import sys
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.realpath(__file__))))
 from plp_rules.config import QCThresholds
 from plp_rules.qc import genotype_passes
 

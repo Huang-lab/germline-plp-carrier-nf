@@ -47,8 +47,25 @@ Then supply the AlphaMissense gene-specific calibration TSV (Chen/Pejaver
 2026) yourself and set `params.am_calibration_tsv` to its path in
 `params/<cohort>.yaml`.
 
-## 5. Build the two Singularity images
-See `containers/README.md`. Do **not** push either image to a public registry.
+## 5. Containers (biocontainers, no build required)
+By default `conf/minerva.config` points each process at a **pre-built public
+Docker image**, and Singularity pulls it on first use into
+`$SINGULARITY_CACHEDIR`. No `singularity build` step is needed — this
+sidesteps Minerva's no-fakeroot restriction.
+
+Defaults:
+- `withLabel: vep` → `docker://ensemblorg/ensembl-vep:release_113.0`
+- `withLabel: bcf` → `docker://staphb/bcftools:1.20`
+- `withLabel: py`  → `docker://python:3.11-slim`
+- `withLabel: annovar` → user-supplied (only needed for ACMG classifier)
+
+First pipeline run will pull these once (~10 min total, one-time cost).
+
+**Optional:** If you'd rather build a custom image, `containers/annotate.def`
+still exists; build it with `singularity build --fakeroot` (only works if
+fakeroot is enabled for your account) or `--remote` (Sylabs cloud), then set
+`params.container_annotate` to the .sif path — it overrides the biocontainer
+default for `vep/bcf/py` labels.
 
 ## 6. Verify the gnomAD popmax field name
 Confirm the popmax AF field name in the real gnomAD v4 VCF header on Minerva:

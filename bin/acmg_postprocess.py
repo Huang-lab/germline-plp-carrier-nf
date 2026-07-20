@@ -13,6 +13,8 @@ import argparse
 import csv
 import sys
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.realpath(__file__))))
 from plp_rules.acmg import parse_intervar_label
 
 
