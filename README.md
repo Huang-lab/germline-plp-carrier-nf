@@ -15,6 +15,35 @@ per-person carrier matrices under three P/LP definitions.
 - **ANNOVAR is user-supplied.** Not vendored. The container builds from your
   registration-gated tarball on Minerva and is never pushed publicly.
 
+## Processing details
+
+### Normalization & QC (`NORM_QC`)
+For each input chunk, in order:
+1. **Contig-naming reconciliation.** Input pVCFs are often UCSC-style
+   (`chr1…chr22, chrX, chrY, chrM`), while the reference FASTA, VEP cache, and
+   NCBI ClinVar are Ensembl-style (`1…22, X, Y, MT`). NORM_QC reads the
+   chromosomes from the records and applies `bcftools annotate --rename-chrs`
+   (`chrN → N`, `chrM/chrMT → MT`) so everything runs in one naming space.
+   VCFs already in Ensembl style are passed through unchanged. **All outputs
+   are therefore Ensembl-style contigs (`10`, not `chr10`).**
+2. **Left-align + split multiallelics:** `bcftools norm -m -any -f <ref>`.
+3. **Site filter:** `bcftools view -f PASS,.` — keeps only `PASS` sites
+   (and filter-less `.`), dropping whatever the upstream caller flagged
+   (e.g. `lowQual`). This respects any site-level QC already applied to the
+   input.
+4. **Per-genotype masking:** `bcftools +setGT … -i 'FMT/DP<${min_dp} | FMT/GQ<${min_gq}'`
+   sets individual genotypes below the depth/quality thresholds to `./.`.
+   This is finer-grained than a site-level average filter — it removes
+   low-confidence *carrier calls* so a carrier is never called off a
+   low-depth genotype. Defaults: `min_dp=10`, `min_gq=20`.
+
+> **Note:** the allele-balance params (`het_ab_min/max`, `hom_ab_min`) are
+> defined but **not yet applied** in `NORM_QC` (only DP and GQ are). Ask if you
+> want het/hom AB masking wired into the `+setGT` expression.
+
+### Classification
+See the three P/LP frameworks below and `docs/data_dictionary.md`.
+
 ## Choosing classifiers
 `params.classifiers` picks which P/LP definitions run. Any subset of
 `clinvar`, `acmg`, `am`. Comma-separated string or Groovy list. Default: all
