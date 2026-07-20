@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#BSUB -J germline-plp-carrier-nf
+#BSUB -q premium
+#BSUB -n 2
+#BSUB -R "rusage[mem=8000] span[hosts=1]"
+#BSUB -W 96:00
+#BSUB -oo logs/germline-plp-carrier-nf.%J.out
+#BSUB -eo logs/germline-plp-carrier-nf.%J.err
+# NOTE: also pass -P $MINERVA_ALLOCATION when submitting, e.g.:
+#   bsub -P $MINERVA_ALLOCATION < run_minerva.lsf
+
+set -euo pipefail
+
+: "${MINERVA_ALLOCATION:?export MINERVA_ALLOCATION=acc_<project> before submitting}"
+
+ml java anaconda3 singularity-ce
+source activate nextflow  # conda env, not the site nextflow module
+
+# Proxy for container pulls and any HTTPS fetches Nextflow makes.
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy="*.chimera.hpc.mssm.edu,.mssm.edu,localhost,127.0.0.1"
+
+mkdir -p logs
+
+# Choose cohort by symlink or by -params-file <cohort>.yaml at submit time.
+PARAMS_FILE="${PARAMS_FILE:-params/msm.yaml}"
+
+nextflow run . \
+    -profile minerva \
+    -params-file "$PARAMS_FILE" \
+    -resume

@@ -1,0 +1,47 @@
+# germline-plp-carrier-nf — Mount Sinai MSM cohort parameters (paths only).
+# No sample IDs, no participant data. Fill paths after running setup/*.sh on Minerva.
+
+cohort: msm
+
+# I/O
+input_vcfs: '/sc/arion/projects/CHANGEME/msm/wes/pvcf_chunks/*.vcf.gz'
+reference_fasta: '/sc/arion/work/USER/germline-plp-refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+outdir: '/sc/arion/scratch/USER/germline-plp-carrier-nf/results-msm'
+keep_samples: '/sc/arion/projects/CHANGEME/msm/keep_samples.txt'
+
+# References
+vep_cache_dir:      '/sc/arion/work/USER/germline-plp-refs/vep_cache'
+vep_cache_version:  113
+clinvar_vcf:        '/sc/arion/work/USER/germline-plp-refs/clinvar/clinvar_20260401.vcf.gz'
+clinvar_release:    '20260401'
+gnomad_vcf:         '/sc/arion/work/USER/germline-plp-refs/gnomad/gnomad.exomes.v4.1.sites.vcf.bgz'
+gnomad_version:     'v4.1'
+am_data_tsv:        '/sc/arion/work/USER/germline-plp-refs/alphamissense/AlphaMissense_hg38.tsv.gz'
+am_plugin_pm:       '/sc/arion/work/USER/germline-plp-refs/plugins/AlphaMissense.pm'
+am_calibration_tsv: '/sc/arion/projects/CHANGEME/refs/am_calibration_chen_pejaver_2026.tsv'
+loftee_data_dir:    '/sc/arion/work/USER/germline-plp-refs/loftee'
+
+# ANNOVAR/InterVar (built + installed on Minerva)
+annovar_dir:     '/sc/arion/work/USER/germline-plp-refs/annovar'
+annovar_humandb: '/sc/arion/work/USER/germline-plp-refs/humandb'
+intervar_dir:    '/sc/arion/work/USER/germline-plp-refs/InterVar'
+intervar_config: '/sc/arion/work/USER/germline-plp-refs/InterVar/config.ini'
+
+# Containers
+container_annotate:         '/sc/arion/work/USER/singularity_cache/annotate.sif'
+container_annovar_intervar: '/sc/arion/work/USER/singularity_cache/annovar_intervar.sif'
+
+# Thresholds
+min_dp: 10
+min_gq: 20
+het_ab_min: 0.20
+het_ab_max: 0.80
+hom_ab_min: 0.90
+clinvar_min_stars: 2
+am_min_strength: 'PP3_Moderate'
+am_default_threshold: 0.564
+min_symbol_fraction: 0.5
+gnomad_popmax_field: 'AF_grpmax'
+
+# Reporting only — never a filter.
+cancer_gene_panel: '/sc/arion/projects/CHANGEME/refs/cancer_gene_panel.tsv'
