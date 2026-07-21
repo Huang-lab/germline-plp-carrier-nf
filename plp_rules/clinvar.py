@@ -26,20 +26,23 @@ _REVSTAT_STARS: dict[str, int] = {
 def parse_stars(clnrevstat: str | None) -> int:
     if not clnrevstat:
         return 0
-    key = clnrevstat.strip().lower().replace(" ", "_")
+    # VEP encodes commas inside CSQ subfields as '&' (its list separator), so
+    # 'criteria_provided,_multiple_submitters,_no_conflicts' arrives as
+    # 'criteria_provided&_multiple_submitters&_no_conflicts'. Normalize back.
+    key = clnrevstat.strip().lower().replace(" ", "_").replace("&", ",")
     return _REVSTAT_STARS.get(key, 0)
 
 
 def _clnsig_terms(clnsig: str | None) -> list[str]:
     if not clnsig:
         return []
-    # VEP --custom joins spaces with `_`; multiple values are comma-separated.
+    # CLNSIG may combine values with ',', '/', or (VEP-encoded) '&'. Split on all.
     parts: list[str] = []
-    for chunk in clnsig.split(","):
-        for sub in chunk.split("/"):
-            sub = sub.strip()
-            if sub:
-                parts.append(sub)
+    normalized = clnsig.replace("&", ",").replace("/", ",")
+    for sub in normalized.split(","):
+        sub = sub.strip()
+        if sub:
+            parts.append(sub)
     return parts
 
 

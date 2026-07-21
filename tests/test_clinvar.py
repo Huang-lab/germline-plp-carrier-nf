@@ -25,6 +25,19 @@ def test_is_plp_pathogenic_and_likely_pathogenic():
     assert is_plp("Uncertain_significance", "criteria_provided,_single_submitter", p1) is False
 
 
+def test_parse_stars_vep_ampersand_encoding():
+    # VEP encodes commas as '&' inside CSQ subfields.
+    assert parse_stars("criteria_provided&_multiple_submitters&_no_conflicts") == 2
+    assert parse_stars("criteria_provided&_single_submitter") == 1
+
+
+def test_is_plp_with_vep_encoded_revstat():
+    p2 = ClinVarParams(min_stars=2)
+    # Real-world VEP output form: Pathogenic, 2-star, ampersand-encoded revstat.
+    assert is_plp("Pathogenic", "criteria_provided&_multiple_submitters&_no_conflicts", p2) is True
+    assert is_plp("Likely_pathogenic", "criteria_provided&_single_submitter", p2) is False  # 1 star < 2
+
+
 def test_is_plp_conflict_downweight():
     p1 = ClinVarParams(min_stars=1)
     # Any Benign / Likely_benign co-annotation → not P/LP.
