@@ -52,7 +52,6 @@ process VEP_ANNOTATE {
             --fasta ${reference_fasta} \\
             --symbol --canonical --mane \\
             --pick --pick_order mane_select,canonical,tsl,biotype,rank,ccds,length \\
-            --fork ${task.cpus} \\
             \$EXTRA
     else
         # Test-profile fallback: synthesize a minimal VEP-like CSQ header + a CSQ INFO tag
