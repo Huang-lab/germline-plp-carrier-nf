@@ -24,11 +24,12 @@ def parseClassifiers(spec) {
     return valid.findAll{ parts.contains(it) }
 }
 
-// Optional-file sentinel: an empty file that build_carrier_matrix ignores.
-// Avoids the "placeholder text read as IDs" bug of prior EMPTY_PLACEHOLDER.
-def optionalFile(p) {
+// Optional-file sentinel: a UNIQUELY-NAMED empty file per logical input, so a
+// process taking several optional paths never sees two files with the same
+// name (Nextflow rejects staging duplicate basenames into one task dir).
+def optionalFile(p, tag) {
     if (p) return file(p)
-    def sentinel = file("${workflow.workDir}/.empty_input")
+    def sentinel = file("${workflow.workDir}/.empty__${tag}")
     if (!sentinel.exists()) { sentinel.text = '' }
     return sentinel
 }
@@ -60,35 +61,42 @@ workflow {
 
     VEP_ANNOTATE(
         NORM_QC.out.vcf,
-        optionalFile(params.vep_cache_dir),
+        optionalFile(params.vep_cache_dir, 'vep_cache_dir'),
         file(params.reference_fasta),
-        optionalFile(params.clinvar_vcf),
-        optionalFile(params.gnomad_vcf),
-        optionalFile(params.am_data_tsv),
-        optionalFile(params.am_plugin_pm),
-        optionalFile(params.loftee_data_dir),
+        optionalFile(params.clinvar_vcf, 'clinvar_vcf'),
+        optionalFile(params.gnomad_vcf, 'gnomad_vcf'),
+        optionalFile(params.am_data_tsv, 'am_data_tsv'),
+        optionalFile(params.am_plugin_pm, 'am_plugin_pm'),
+        optionalFile(params.loftee_data_dir, 'loftee_data_dir'),
     )
 
     VALIDATE_CHUNK(VEP_ANNOTATE.out.vcf, classifiers.join(','))
 
-    // Empty channel emitting an empty file per chunk — used when a classifier is off.
-    def empty_ch = { VALIDATE_CHUNK.out.vcf.map { id, vcf -> file("${workflow.workDir}/.empty_${id}") } }
+    // When a classifier is OFF, emit a per-chunk EMPTY placeholder named exactly
+    // like that classifier's real output (<id>.<suffix>), so (a) it keys to the
+    // chunk in the join below and (b) its basename never collides with another
+    // classifier's placeholder. Downstream steps skip zero-byte tables.
+    def emptyPerChunk = { suffix -> VALIDATE_CHUNK.out.vcf.map { id, vcf ->
+        def f = file("${workflow.workDir}/${id}.${suffix}")
+        if (!f.exists()) { f.text = '' }
+        return f
+    } }
 
     def clinvar_tsv_ch = classifiers.contains('clinvar')
         ? CLINVAR_CLASSIFY(VALIDATE_CHUNK.out.vcf).tsv
-        : empty_ch()
+        : emptyPerChunk('clinvar_plp')
     def am_tsv_ch = classifiers.contains('am')
-        ? ALPHAMISSENSE_CLASSIFY(VALIDATE_CHUNK.out.vcf, optionalFile(params.am_calibration_tsv)).tsv
-        : empty_ch()
+        ? ALPHAMISSENSE_CLASSIFY(VALIDATE_CHUNK.out.vcf, optionalFile(params.am_calibration_tsv, 'am_calibration_tsv')).tsv
+        : emptyPerChunk('am_plp')
     def acmg_tsv_ch = classifiers.contains('acmg')
         ? ACMG_ANNOVAR_INTERVAR(
               VALIDATE_CHUNK.out.vcf,
-              optionalFile(params.annovar_dir),
-              optionalFile(params.annovar_humandb),
-              optionalFile(params.intervar_dir),
-              optionalFile(params.intervar_config),
+              optionalFile(params.annovar_dir, 'annovar_dir'),
+              optionalFile(params.annovar_humandb, 'annovar_humandb'),
+              optionalFile(params.intervar_dir, 'intervar_dir'),
+              optionalFile(params.intervar_config, 'intervar_config'),
           ).tsv
-        : empty_ch()
+        : emptyPerChunk('acmg_plp')
 
     // Per-chunk join: tuple(chunk_id, vcf, clinvar_tsv, acmg_tsv, am_tsv)
     // Each classifier TSV filename encodes the chunk_id as basename prefix.
@@ -108,7 +116,7 @@ workflow {
     PER_GENE_QC(pc_vcf, pc_cv, pc_ac, pc_am, classifiers.join(','))
 
     CARRIER_MATRIX(pc_vcf, pc_cv, pc_ac, pc_am,
-                   optionalFile(params.keep_samples), classifiers.join(','))
+                   optionalFile(params.keep_samples, 'keep_samples'), classifiers.join(','))
 
     CONCAT_CARRIER_MATRIX(CARRIER_MATRIX.out.long_tsv.collect())
 
