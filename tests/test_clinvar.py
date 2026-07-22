@@ -1,5 +1,18 @@
-from plp_rules.clinvar import parse_stars, is_plp
+from plp_rules.clinvar import parse_stars, is_plp, parse_condition
 from plp_rules.config import ClinVarParams
+
+
+def test_parse_condition_basic():
+    # VEP encodes commas as '&'; conditions are '|'-separated.
+    assert parse_condition("Breast-ovarian_cancer&_familial_1") == "Breast-ovarian_cancer,_familial_1"
+    assert parse_condition("Cardiomyopathy|Long_QT_syndrome") == "Cardiomyopathy; Long_QT_syndrome"
+    assert parse_condition("") == ""
+
+
+def test_parse_condition_drops_placeholders():
+    # 'not_provided'/'not_specified' dropped unless they're all there is.
+    assert parse_condition("not_provided|Retinitis_pigmentosa") == "Retinitis_pigmentosa"
+    assert parse_condition("not_specified") == "not_specified"
 
 
 def test_parse_stars_ladder():

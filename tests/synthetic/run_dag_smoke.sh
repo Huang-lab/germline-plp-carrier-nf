@@ -36,9 +36,11 @@ grep -q '"ok": true' "${CHUNK}.validate.json"
     --min-strength PP3_Moderate \
     --out "${CHUNK}.am_plp.tsv"
 
-# ACMG_ANNOVAR_INTERVAR (fallback: synthetic_intervar.py then acmg_postprocess.py)
-"$ROOT/bin/synthetic_intervar.py" --in "${CHUNK}.vep.vcf" --out _syn.intervar
-"$ROOT/bin/acmg_postprocess.py" --intervar _syn.intervar --out "${CHUNK}.acmg_plp.tsv"
+# ACMG_ANNOVAR_INTERVAR (fallback: synthetic intervar + placeholder multianno)
+"$ROOT/bin/synthetic_intervar.py" --in "${CHUNK}.vep.vcf" --out "${CHUNK}.hg38_multianno.txt.intervar"
+printf '#Chr\tStart\tEnd\tRef\tAlt\tFunc.refGene\tGene.refGene\n' > "${CHUNK}.hg38_multianno.txt"
+"$ROOT/bin/acmg_postprocess.py" --intervar "${CHUNK}.hg38_multianno.txt.intervar" --out "${CHUNK}.acmg_plp.tsv"
+test -s "${CHUNK}.hg38_multianno.txt" && test -s "${CHUNK}.hg38_multianno.txt.intervar" && echo "ACMG intermediates present"
 
 # PER_GENE_QC (inlined python from modules/local/per_gene_qc.nf)
 python3 - <<PY
@@ -63,19 +65,18 @@ PY
 # CARRIER_MATRIX
 python3 - <<PY
 import csv
-keys=set()
+pos=set()
 for p,f in [("${CHUNK}.clinvar_plp.tsv","is_clinvar_PLP"),
             ("${CHUNK}.acmg_plp.tsv","is_acmg_PLP"),
             ("${CHUNK}.am_plp.tsv","is_AM_PLP")]:
     for row in csv.DictReader(open(p), delimiter="\t"):
         if int(row.get(f,"0") or 0):
-            keys.add((row["chr"], row["pos"], row["ref"], row["alt"]))
-with open("qualifying.bed","w") as out:
-    for c,p,ref,alt in sorted(keys):
-        s=int(p)-1; e=int(p)+max(len(ref),len(alt))-1
-        out.write(f"{c}\t{s}\t{e}\n")
+            pos.add((row["chr"], row["pos"]))
+with open("qualifying.pos.txt","w") as out:
+    for c,p in sorted(pos):
+        out.write(f"{c}\t{p}\n")
 PY
-"$ROOT/bin/fixture_gt_extract.py" --vcf "${CHUNK}.vep.vcf" --bed qualifying.bed --out gt.tsv
+"$ROOT/bin/fixture_gt_extract.py" --vcf "${CHUNK}.vep.vcf" --positions qualifying.pos.txt --out gt.tsv
 "$ROOT/bin/build_carrier_matrix.py" \
     --gt gt.tsv \
     --clinvar "${CHUNK}.clinvar_plp.tsv" \

@@ -13,11 +13,13 @@
         {"const": "alt"},
         {"const": "gene"},
         {"const": "person_id"},
+        {"const": "GT"},
+        {"const": "zygosity"},
         {"const": "is_clinvar_PLP"},
         {"const": "is_acmg_PLP"},
         {"const": "is_AM_PLP"}
       ],
-      "minItems": 9
+      "minItems": 11
     }
   }
 }

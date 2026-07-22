@@ -9,7 +9,9 @@ process ACMG_ANNOVAR_INTERVAR {
     path intervar_config
 
     output:
-    path("${chunk_id}.acmg_plp.tsv"), emit: tsv
+    path("${chunk_id}.acmg_plp.tsv"),        emit: tsv
+    path("${chunk_id}.hg38_multianno.txt"),  emit: annovar_multianno
+    path("${chunk_id}*.intervar"),           emit: intervar_raw
 
     script:
     """
@@ -27,9 +29,11 @@ process ACMG_ANNOVAR_INTERVAR {
         INTERVAR_OUT=\$(ls ${chunk_id}*.intervar 2>/dev/null | head -n1)
         ${projectDir}/bin/acmg_postprocess.py --intervar \$INTERVAR_OUT --out ${chunk_id}.acmg_plp.tsv
     else
-        # Test-profile fallback: consume a fixture InterVar-shaped file synthesized by synthetic_vep.py.
-        python3 ${projectDir}/bin/synthetic_intervar.py --in ${vcf} --out _syn.intervar
-        ${projectDir}/bin/acmg_postprocess.py --intervar _syn.intervar --out ${chunk_id}.acmg_plp.tsv
+        # Test-profile fallback: produce the same declared output files with
+        # synthetic content so the DAG wiring and publishing are exercised.
+        python3 ${projectDir}/bin/synthetic_intervar.py --in ${vcf} --out ${chunk_id}.hg38_multianno.txt.intervar
+        printf '#Chr\\tStart\\tEnd\\tRef\\tAlt\\tFunc.refGene\\tGene.refGene\\n' > ${chunk_id}.hg38_multianno.txt
+        ${projectDir}/bin/acmg_postprocess.py --intervar ${chunk_id}.hg38_multianno.txt.intervar --out ${chunk_id}.acmg_plp.tsv
     fi
     """
 }

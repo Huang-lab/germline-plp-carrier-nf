@@ -7,7 +7,8 @@ Inputs:
   --acmg      acmg_postprocess output TSV
   --am        classify_alphamissense output TSV
   --keep      sample keep-list, one ID per line (optional)
-  --out-long  long-format output TSV (chr,pos,ref,alt,gene,person_id,is_clinvar_PLP,is_acmg_PLP,is_AM_PLP)
+  --out-long  long-format output TSV (chr,pos,ref,alt,gene,person_id,GT,zygosity,
+              is_clinvar_PLP,is_acmg_PLP,is_AM_PLP)
   --out-wide  optional wide pivot (variant_key rows × person columns, cell = OR of the three flags)
 """
 from __future__ import annotations
@@ -18,6 +19,32 @@ from collections import defaultdict
 
 def _key(chrom: str, pos: str, ref: str, alt: str) -> tuple[str, str, str, str]:
     return (chrom, pos, ref, alt)
+
+
+def zygosity(gt: str, chrom: str) -> str:
+    """Classify a genotype: het / hom_alt / hemizygous / hom_ref / missing.
+
+    Contigs are Ensembl-style here ('X'/'Y', no 'chr'). A haploid call (single
+    allele token) is hemizygous; a diploid call on X/Y with only one allele
+    present is also inferred hemizygous.
+    """
+    norm = (gt or "").replace("|", "/").strip()
+    if norm in ("", ".", "./.", "./", "/."):
+        return "missing"
+    toks = norm.split("/")
+    called = [t for t in toks if t not in (".", "")]
+    if len(toks) == 1:
+        return "hemizygous"
+    if len(called) == 1 and str(chrom) in ("X", "Y", "chrX", "chrY"):
+        return "hemizygous"
+    if len(called) < 2:
+        return "het" if any(a != "0" for a in called) else "missing"
+    a, b = called[0], called[1]
+    if a == "0" and b == "0":
+        return "hom_ref"
+    if a != "0" and b != "0":
+        return "hom_alt" if a == b else "het"
+    return "het"
 
 
 def _load_classification(path: str, flag_col: str) -> tuple[dict, dict]:
@@ -99,13 +126,14 @@ def main() -> int:
             ac = ac_flags.get(k, 0)
             am = am_flags.get(k, 0)
             gene = gene_for(k)
-            long_rows.append([chrom, pos, ref, alt, gene, sample, str(cv), str(ac), str(am)])
+            zyg = zygosity(gt, chrom)
+            long_rows.append([chrom, pos, ref, alt, gene, sample, gt, zyg, str(cv), str(ac), str(am)])
             if args.out_wide:
                 vk = f"{chrom}:{pos}:{ref}:{alt}"
                 wide_cells[vk][sample] = 1 if (cv or ac or am) else wide_cells[vk].get(sample, 0)
 
     with open(args.out_long, "w", encoding="utf-8") as out:
-        out.write("chr\tpos\tref\talt\tgene\tperson_id\tis_clinvar_PLP\tis_acmg_PLP\tis_AM_PLP\n")
+        out.write("chr\tpos\tref\talt\tgene\tperson_id\tGT\tzygosity\tis_clinvar_PLP\tis_acmg_PLP\tis_AM_PLP\n")
         for r in long_rows:
             out.write("\t".join(r) + "\n")
 
