@@ -33,7 +33,7 @@ process VEP_ANNOTATE {
         # so a size test cleanly enables/disables each one.
         EXTRA=""
         if [ -s "${clinvar_vcf}" ]; then
-            EXTRA="\$EXTRA --custom ${clinvar_vcf},ClinVar,vcf,exact,0,CLNSIG,CLNREVSTAT"
+            EXTRA="\$EXTRA --custom ${clinvar_vcf},ClinVar,vcf,exact,0,CLNSIG,CLNREVSTAT,CLNDN,CLNSIGCONF"
         fi
         if [ -s "${gnomad_vcf}" ]; then
             EXTRA="\$EXTRA --custom ${gnomad_vcf},gnomAD,vcf,exact,0,AF,${params.gnomad_popmax_field}"

@@ -33,6 +33,23 @@ def parse_stars(clnrevstat: str | None) -> int:
     return _REVSTAT_STARS.get(key, 0)
 
 
+def parse_condition(clndn: str | None) -> str:
+    """Normalize a ClinVar CLNDN (disease name) value for the output column.
+
+    CLNDN is free text; multiple conditions are separated by '|' (and VEP may
+    encode internal commas as '&'). Present as a readable '; '-joined string,
+    dropping the placeholder 'not_provided'/'not_specified' when it's the only
+    value.
+    """
+    if not clndn:
+        return ""
+    raw = clndn.replace("&", ",")
+    parts = [p.strip() for p in raw.split("|") if p.strip()]
+    meaningful = [p for p in parts if p.lower() not in ("not_provided", "not_specified")]
+    chosen = meaningful if meaningful else parts
+    return "; ".join(chosen)
+
+
 def _clnsig_terms(clnsig: str | None) -> list[str]:
     if not clnsig:
         return []

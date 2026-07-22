@@ -8,6 +8,7 @@ include { CLINVAR_CLASSIFY }       from './modules/local/clinvar_classify.nf'
 include { ALPHAMISSENSE_CLASSIFY } from './modules/local/alphamissense_classify.nf'
 include { ACMG_ANNOVAR_INTERVAR }  from './modules/local/acmg_annovar_intervar.nf'
 include { PER_GENE_QC }            from './modules/local/per_gene_qc.nf'
+include { CARRIER_GT }             from './modules/local/carrier_gt.nf'
 include { CARRIER_MATRIX }         from './modules/local/carrier_matrix.nf'
 include { CONCAT_CARRIER_MATRIX }  from './modules/local/concat_carrier_matrix.nf'
 include { MANIFEST }               from './modules/local/manifest.nf'
@@ -115,7 +116,14 @@ workflow {
 
     PER_GENE_QC(pc_vcf, pc_cv, pc_ac, pc_am, classifiers.join(','))
 
-    CARRIER_MATRIX(pc_vcf, pc_cv, pc_ac, pc_am,
+    // Efficient GT extraction (bcftools, C-speed) then pure-Python assembly.
+    CARRIER_GT(per_chunk)   // input tuple(id, vcf, cv, ac, am) → tuple(id, gt)
+
+    def cm_in = per_chunk
+        .map { id, vcf, cv, ac, am -> tuple(id, cv, ac, am) }
+        .join(CARRIER_GT.out.gt)   // tuple(id, cv, ac, am, gt)
+
+    CARRIER_MATRIX(cm_in,
                    optionalFile(params.keep_samples, 'keep_samples'), classifiers.join(','))
 
     CONCAT_CARRIER_MATRIX(CARRIER_MATRIX.out.long_tsv.collect())

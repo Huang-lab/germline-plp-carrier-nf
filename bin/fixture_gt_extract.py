@@ -21,7 +21,8 @@ def _open(path: str):
     return open(path, "r", encoding="utf-8")
 
 
-def _load_bed(path: str) -> set[tuple[str, int]]:
+def _load_positions(path: str) -> set[tuple[str, int]]:
+    """Load a CHROM<TAB>POS (1-based) positions file — same format bcftools -T uses."""
     keep = set()
     if not path:
         return keep
@@ -29,20 +30,22 @@ def _load_bed(path: str) -> set[tuple[str, int]]:
         for line in fh:
             if not line.strip() or line.startswith("#"):
                 continue
-            c, s, e = line.rstrip("\n").split("\t")[:3]
-            for p in range(int(s) + 1, int(e) + 1):
-                keep.add((c, p))
+            cols = line.rstrip("\n").split("\t")
+            if len(cols) < 2:
+                continue
+            keep.add((cols[0], int(cols[1])))
     return keep
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--vcf", required=True)
-    ap.add_argument("--bed", required=True)
+    ap.add_argument("--positions", required=True,
+                    help="CHROM<TAB>POS (1-based) file, as used by bcftools -T")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    keep = _load_bed(args.bed)
+    keep = _load_positions(args.positions)
     samples: list[str] = []
 
     with _open(args.vcf) as fh, open(args.out, "w", encoding="utf-8") as out:

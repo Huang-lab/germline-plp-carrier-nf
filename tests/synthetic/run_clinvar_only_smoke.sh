@@ -36,15 +36,15 @@ grep -q '"ok": true' "${CHUNK}.validate.json" || { cat "${CHUNK}.validate.json";
 # CARRIER_MATRIX: build BED, extract GTs, matrix.
 python3 - <<PY
 import csv
-keys=set()
+pos=set()
 for row in csv.DictReader(open("${CHUNK}.clinvar_plp.tsv"), delimiter="\t"):
     if int(row.get("is_clinvar_PLP","0") or 0):
-        keys.add((row["chr"], row["pos"], row["ref"], row["alt"]))
-with open("qualifying.bed","w") as out:
-    for c,p,ref,alt in sorted(keys):
-        out.write(f"{c}\t{int(p)-1}\t{int(p)+max(len(ref),len(alt))-1}\n")
+        pos.add((row["chr"], row["pos"]))
+with open("qualifying.pos.txt","w") as out:
+    for c,p in sorted(pos):
+        out.write(f"{c}\t{p}\n")
 PY
-"$ROOT/bin/fixture_gt_extract.py" --vcf "${CHUNK}.vep.vcf" --bed qualifying.bed --out gt.tsv
+"$ROOT/bin/fixture_gt_extract.py" --vcf "${CHUNK}.vep.vcf" --positions qualifying.pos.txt --out gt.tsv
 
 # ACMG and AM inputs OMITTED (--acmg/--am unset).
 "$ROOT/bin/build_carrier_matrix.py" \
