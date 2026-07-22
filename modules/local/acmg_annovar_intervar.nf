@@ -14,6 +14,7 @@ process ACMG_ANNOVAR_INTERVAR {
     path("${chunk_id}*.intervar"),           emit: intervar_raw
 
     script:
+    def allow_stub = (params.allow_stub_acmg as boolean)
     """
     set -euo pipefail
     if command -v Intervar.py >/dev/null 2>&1 || [ -x "${intervar_dir}/Intervar.py" ]; then
@@ -28,12 +29,18 @@ process ACMG_ANNOVAR_INTERVAR {
             --input_type=AVinput -b hg38 -t \${intervar_dir}/intervardb -d ${annovar_humandb}
         INTERVAR_OUT=\$(ls ${chunk_id}*.intervar 2>/dev/null | head -n1)
         ${projectDir}/bin/acmg_postprocess.py --intervar \$INTERVAR_OUT --out ${chunk_id}.acmg_plp.tsv
-    else
-        # Test-profile fallback: produce the same declared output files with
-        # synthetic content so the DAG wiring and publishing are exercised.
+    elif [ "${allow_stub}" = "true" ]; then
+        # Synthetic stub — ONLY for the test profile (params.allow_stub_acmg=true).
+        # Produces the declared output files so DAG wiring/publishing is exercised.
         python3 ${projectDir}/bin/synthetic_intervar.py --in ${vcf} --out ${chunk_id}.hg38_multianno.txt.intervar
         printf '#Chr\\tStart\\tEnd\\tRef\\tAlt\\tFunc.refGene\\tGene.refGene\\n' > ${chunk_id}.hg38_multianno.txt
         ${projectDir}/bin/acmg_postprocess.py --intervar ${chunk_id}.hg38_multianno.txt.intervar --out ${chunk_id}.acmg_plp.tsv
+    else
+        echo "ERROR: ACMG requested but ANNOVAR/InterVar is not available." >&2
+        echo "  Run setup/setup_annovar_intervar.sh and set params annovar_dir, annovar_humandb," >&2
+        echo "  intervar_dir, intervar_config, and container_annovar_intervar." >&2
+        echo "  (For pipeline testing only, set --allow_stub_acmg true to emit a synthetic stub.)" >&2
+        exit 1
     fi
     """
 }
