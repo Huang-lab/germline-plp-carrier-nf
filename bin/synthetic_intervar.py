@@ -43,7 +43,18 @@ def main() -> int:
                     first = kv[4:].split(",", 1)[0].split("|")
                     if len(first) > 3:
                         symbol = first[3]
-            iv = f"InterVar: {acmg_label} PVS1=0 PS=[0,0,0,0,0] PM=[0,0,0,0,0,0,0] PP=[0,0,0,0,0] BA1=0 BS=[0,0,0,0] BP=[0,0,0,0,0,0,0,0]"
+            # Make the evidence vector consistent with the synthetic label so
+            # the criteria columns are exercised downstream.
+            ll = acmg_label.lower()
+            pvs1, pm, pp, ba1 = 0, "0,0,0,0,0,0,0", "0,0,0,0,0", 0
+            if ll == "pathogenic":
+                pvs1, pm, pp = 1, "1,0,0,0,0,0,0", "1,0,0,0,0"
+            elif ll == "likely pathogenic":
+                pm, pp = "0,1,0,0,0,0,0", "1,0,0,0,0"
+            elif ll == "benign":
+                ba1 = 1
+            iv = (f"InterVar: {acmg_label} PVS1={pvs1} PS=[0,0,0,0,0] PM=[{pm}] "
+                  f"PP=[{pp}] BA1={ba1} BS=[0,0,0,0] BP=[0,0,0,0,0,0,0,0]")
             end = str(int(pos) + max(len(ref), len(alt)) - 1)
             out.write("\t".join([chrom, pos, end, ref, alt, symbol, iv]) + "\n")
     return 0

@@ -42,8 +42,14 @@ of a variant that is P/LP under any framework, else 0.
 | column | description |
 |--------|-------------|
 | `chr`, `pos`, `ref`, `alt`, `gene` | as above |
-| `acmg_label` | InterVar label: `Pathogenic` / `Likely pathogenic` / `Uncertain significance` / `Likely benign` / `Benign`. |
-| `is_acmg_PLP` | 0/1. |
+| `acmg_label` | InterVar 2015 ACMG/AMP label: `Pathogenic` / `Likely pathogenic` / `Uncertain significance` / `Likely benign` / `Benign`. |
+| `acmg_criteria` | `;`-joined triggered ACMG codes, e.g. `PVS1;PM2;PP3` (parsed comprehensively from InterVar's evidence vector; array lengths read from data, robust to InterVar version). |
+| `n_pathogenic_criteria` | Count of triggered pathogenic codes (PVS/PS/PM/PP). |
+| `n_benign_criteria` | Count of triggered benign codes (BA/BS/BP). |
+| `is_acmg_PLP` | 0/1 (InterVar's own label; optionally demoted when the stand-alone benign BA1 fired, via `acmg_postprocess.py --demote-on-ba1`). |
+
+Raw ANNOVAR/InterVar intermediates are published under
+`results/annovar_intervar/` (see below).
 
 ## `results/variants/am_plp.tsv`
 | column | description |
