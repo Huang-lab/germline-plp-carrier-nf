@@ -1,0 +1,67 @@
+Sender: LSF System <lsfadmin@lh06c30>
+Subject: Job 257326450: <plp-chr1> in cluster <chimera> Exited
+
+Job <plp-chr1> was submitted from host <li04e02> by user <luj12> in cluster <chimera> at Tue Jul 21 21:58:27 2026
+Job was executed on host(s) <2*lh06c30>, in queue <premium>, as user <luj12> in cluster <chimera> at Tue Jul 21 21:58:32 2026
+</hpc/users/luj12> was used as the home directory.
+</sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf> was used as the working directory.
+Started at Tue Jul 21 21:58:32 2026
+Terminated at Tue Jul 21 21:58:42 2026
+Results reported at Tue Jul 21 21:58:42 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+ml java anaconda3 singularity-ce
+source activate nextflow
+export MINERVA_ALLOCATION=acc_rg_huangk06
+export SINGULARITY_CACHEDIR=/sc/arion/work/$USER/singularity_cache
+export SINGULARITY_TMPDIR=/sc/arion/work/$USER/singularity_tmp
+export http_proxy=http://172.28.7.1:3128 https_proxy=http://172.28.7.1:3128 all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+cd /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf
+nextflow run . -profile minerva -params-file params/msm.local.yaml \
+    --classifiers clinvar \
+    --input_vcfs '/sc/arion/projects/MSM/data/WES/combined/batch_001/pVCF/Target/*chr1_*.vcf.gz' \
+    --outdir '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1' -resume
+
+------------------------------------------------------------
+
+Exited with exit code 1.
+
+Resource usage summary:
+
+    CPU time :                                   10.17 sec.
+    Max Memory :                                 154 MB
+    Average Memory :                             97.71 MB
+    Total Requested Memory :                     16000.00 MB
+    Delta Memory :                               15846.00 MB
+    Max Swap :                                   -
+    Max Processes :                              5
+    Max Threads :                                24
+    Run time :                                   10 sec.
+    Turnaround time :                            15 sec.
+
+The output (if any) follows:
+
+N E X T F L O W  ~  version 23.10.1
+Launching `./main.nf` [special_ekeblad] DSL2 - revision: 7f46e25275
+ERROR ~ Unable to acquire lock on session with ID b2bad11f-6daa-469e-993a-72fc4dacbb5b
+
+Common reasons for this error are:
+ - You are trying to resume the execution of an already running pipeline
+ - A previous execution was abruptly interrupted, leaving the session open
+
+You can see which process is holding the lock file by using the following command:
+ - lsof /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf/.nextflow/cache/b2bad11f-6daa-469e-993a-72fc4dacbb5b/db/LOCK
+
+ -- Check '.nextflow.log' file for details
+
+
+PS:
+
+Read file <logs/chr1.257326450.err> for stderr output of this job.
+

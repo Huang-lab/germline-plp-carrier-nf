@@ -1,0 +1,267 @@
+Sender: LSF System <lsfadmin@lc06e47>
+Subject: Job 257315033: <plp-pilot> in cluster <chimera> Exited
+
+Job <plp-pilot> was submitted from host <li04e02> by user <luj12> in cluster <chimera> at Tue Jul 21 15:17:55 2026
+Job was executed on host(s) <2*lc06e47>, in queue <premium>, as user <luj12> in cluster <chimera> at Tue Jul 21 15:17:59 2026
+</hpc/users/luj12> was used as the home directory.
+</sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf> was used as the working directory.
+Started at Tue Jul 21 15:17:59 2026
+Terminated at Tue Jul 21 15:19:08 2026
+Results reported at Tue Jul 21 15:19:08 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+ml java anaconda3 singularity-ce
+source activate nextflow
+export MINERVA_ALLOCATION=acc_rg_huangk06
+export SINGULARITY_CACHEDIR=/sc/arion/work/$USER/singularity_cache
+export SINGULARITY_TMPDIR=/sc/arion/work/$USER/singularity_tmp
+export http_proxy=http://172.28.7.1:3128 https_proxy=http://172.28.7.1:3128 all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+cd /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf
+nextflow run . -profile minerva -params-file params/msm.local.yaml \
+    --classifiers clinvar --input_vcfs '/sc/arion/projects/MSM/data/WES/combined/batch_001/pVCF/Target/Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz' --outdir '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-pilot' -resume
+
+------------------------------------------------------------
+
+Exited with exit code 1.
+
+Resource usage summary:
+
+    CPU time :                                   12.59 sec.
+    Max Memory :                                 277 MB
+    Average Memory :                             252.69 MB
+    Total Requested Memory :                     16000.00 MB
+    Delta Memory :                               15723.00 MB
+    Max Swap :                                   -
+    Max Processes :                              5
+    Max Threads :                                29
+    Run time :                                   69 sec.
+    Turnaround time :                            73 sec.
+
+The output (if any) follows:
+
+N E X T F L O W  ~  version 23.10.1
+Launching `./main.nf` [silly_lagrange] DSL2 - revision: 7f46e25275
+germline-plp-carrier-nf: classifiers = [clinvar]
+[-        ] process > NORM_QC               -
+[-        ] process > VEP_ANNOTATE          -
+[-        ] process > VALIDATE_CHUNK        -
+[-        ] process > CLINVAR_CLASSIFY      -
+[-        ] process > PER_GENE_QC           -
+[-        ] process > CARRIER_MATRIX        -
+[-        ] process > CONCAT_CARRIER_MATRIX -
+[-        ] process > MANIFEST              -
+
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[-        ] process > VEP_ANNOTATE                   [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (1)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[0e/1e9536] process > VEP_ANNOTATE (Targeted_MSM_... [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (1)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[0e/1e9536] process > VEP_ANNOTATE (Targeted_MSM_... [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (1)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[0e/1e9536] process > VEP_ANNOTATE (Targeted_MSM_... [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+ERROR ~ Error executing process > 'VEP_ANNOTATE (Targeted_MSM_b001_260_chr10_133546508_133797422)'
+
+Caused by:
+  Process `VEP_ANNOTATE (Targeted_MSM_b001_260_chr10_133546508_133797422)` terminated with an error exit status (255)
+
+Command executed:
+
+  set -euo pipefail
+  if command -v vep >/dev/null 2>&1; then
+      # --custom VCF tracks need a tabix index adjacent to the file. Nextflow
+      # stages the .vcf.gz but not its index, so build one in the task dir if
+      # absent (tabix ships with the VEP container's htslib).
+      for f in "clinvar_20250715.vcf.gz" ".empty__gnomad_vcf"; do
+          if [ -s "$f" ] && [ ! -e "$f.tbi" ] && [ ! -e "$f.csi" ]; then
+              tabix -p vcf "$f" || true
+          fi
+      done
+  
+      # Build optional tracks/plugins ONLY for references actually supplied.
+      # Unused optional inputs are 0-byte placeholders (see main.nf optionalFile),
+      # so a size test cleanly enables/disables each one.
+      EXTRA=""
+      if [ -s "clinvar_20250715.vcf.gz" ]; then
+          EXTRA="$EXTRA --custom clinvar_20250715.vcf.gz,ClinVar,vcf,exact,0,CLNSIG,CLNREVSTAT"
+      fi
+      if [ -s ".empty__gnomad_vcf" ]; then
+          EXTRA="$EXTRA --custom .empty__gnomad_vcf,gnomAD,vcf,exact,0,AF,AF_grpmax"
+      fi
+      if [ -s ".empty__am_data_tsv" ]; then
+          EXTRA="$EXTRA --dir_plugins $(dirname $(readlink -f .empty__am_plugin_pm)) --plugin AlphaMissense,file=.empty__am_data_tsv"
+      fi
+      if [ -s ".empty__loftee_data_dir/human_ancestor.fa.gz" ]; then
+          EXTRA="$EXTRA --plugin LoF,loftee_path:/opt/loftee,human_ancestor_fa:.empty__loftee_data_dir/human_ancestor.fa.gz"
+      fi
+  
+      vep --input_file Targeted_MSM_b001_260_chr10_133546508_133797422.norm.vcf --output_file Targeted_MSM_b001_260_chr10_133546508_133797422.vep.vcf --vcf \
+          --force_overwrite --no_stats --offline --cache \
+          --dir_cache vep_cache --cache_version 113 \
+          --species homo_sapiens --assembly GRCh38 \
+          --fasta Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz \
+          --symbol --canonical --mane \
+          --pick --pick_order mane_select,canonical,tsl,biotype,rank,ccds,length \
+          --fork 1 \
+          $EXTRA
+  else
+      # Test-profile fallback: synthesize a minimal VEP-like CSQ header + a CSQ INFO tag
+      # for each variant, using SYMBOL from a fixed lookup table in the fixture.
+      python3 /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf/bin/synthetic_vep.py --in Targeted_MSM_b001_260_chr10_133546508_133797422.norm.vcf --out Targeted_MSM_b001_260_chr10_133546508_133797422.vep.vcf
+  fi
+
+Command exit status:
+  255
+
+Command output:
+  (empty)
+
+Command error:
+  
+  -------------------- EXCEPTION --------------------
+  MSG: 
+  ERROR: Forked process(es) died: read-through of cross-process communication detected
+  
+  STACK Bio::EnsEMBL::VEP::Runner::_forked_buffer_to_output /opt/vep/src/ensembl-vep/modules/Bio/EnsEMBL/VEP/Runner.pm:562
+  STACK Bio::EnsEMBL::VEP::Runner::next_output_line /opt/vep/src/ensembl-vep/modules/Bio/EnsEMBL/VEP/Runner.pm:367
+  STACK Bio::EnsEMBL::VEP::Runner::run /opt/vep/src/ensembl-vep/modules/Bio/EnsEMBL/VEP/Runner.pm:208
+  STACK toplevel /opt/vep/src/ensembl-vep/vep:46
+  Date (localtime)    = Tue Jul 21 15:18:48 2026
+  Ensembl API version = 113
+  ---------------------------------------------------
+
+Work dir:
+  /sc/arion/scratch/luj12/nf-germline-plp-carrier/0e/1e9536e632978077989c5a13b43e59
+
+Tip: you can replicate the issue by changing to the process work dir and entering the command `bash .command.run`
+
+ -- Check '.nextflow.log' file for details
+
+executor >  lsf (1)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[0e/1e9536] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1, failed: 1 ✘
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+Execution cancelled -- Finishing pending tasks before exit
+ERROR ~ Error executing process > 'VEP_ANNOTATE (Targeted_MSM_b001_260_chr10_133546508_133797422)'
+
+Caused by:
+  Process `VEP_ANNOTATE (Targeted_MSM_b001_260_chr10_133546508_133797422)` terminated with an error exit status (255)
+
+Command executed:
+
+  set -euo pipefail
+  if command -v vep >/dev/null 2>&1; then
+      # --custom VCF tracks need a tabix index adjacent to the file. Nextflow
+      # stages the .vcf.gz but not its index, so build one in the task dir if
+      # absent (tabix ships with the VEP container's htslib).
+      for f in "clinvar_20250715.vcf.gz" ".empty__gnomad_vcf"; do
+          if [ -s "$f" ] && [ ! -e "$f.tbi" ] && [ ! -e "$f.csi" ]; then
+              tabix -p vcf "$f" || true
+          fi
+      done
+  
+      # Build optional tracks/plugins ONLY for references actually supplied.
+      # Unused optional inputs are 0-byte placeholders (see main.nf optionalFile),
+      # so a size test cleanly enables/disables each one.
+      EXTRA=""
+      if [ -s "clinvar_20250715.vcf.gz" ]; then
+          EXTRA="$EXTRA --custom clinvar_20250715.vcf.gz,ClinVar,vcf,exact,0,CLNSIG,CLNREVSTAT"
+      fi
+      if [ -s ".empty__gnomad_vcf" ]; then
+          EXTRA="$EXTRA --custom .empty__gnomad_vcf,gnomAD,vcf,exact,0,AF,AF_grpmax"
+      fi
+      if [ -s ".empty__am_data_tsv" ]; then
+          EXTRA="$EXTRA --dir_plugins $(dirname $(readlink -f .empty__am_plugin_pm)) --plugin AlphaMissense,file=.empty__am_data_tsv"
+      fi
+      if [ -s ".empty__loftee_data_dir/human_ancestor.fa.gz" ]; then
+          EXTRA="$EXTRA --plugin LoF,loftee_path:/opt/loftee,human_ancestor_fa:.empty__loftee_data_dir/human_ancestor.fa.gz"
+      fi
+  
+      vep --input_file Targeted_MSM_b001_260_chr10_133546508_133797422.norm.vcf --output_file Targeted_MSM_b001_260_chr10_133546508_133797422.vep.vcf --vcf \
+          --force_overwrite --no_stats --offline --cache \
+          --dir_cache vep_cache --cache_version 113 \
+          --species homo_sapiens --assembly GRCh38 \
+          --fasta Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz \
+          --symbol --canonical --mane \
+          --pick --pick_order mane_select,canonical,tsl,biotype,rank,ccds,length \
+          --fork 1 \
+          $EXTRA
+  else
+      # Test-profile fallback: synthesize a minimal VEP-like CSQ header + a CSQ INFO tag
+      # for each variant, using SYMBOL from a fixed lookup table in the fixture.
+      python3 /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf/bin/synthetic_vep.py --in Targeted_MSM_b001_260_chr10_133546508_133797422.norm.vcf --out Targeted_MSM_b001_260_chr10_133546508_133797422.vep.vcf
+  fi
+
+Command exit status:
+  255
+
+Command output:
+  (empty)
+
+Command error:
+  
+  -------------------- EXCEPTION --------------------
+  MSG: 
+  ERROR: Forked process(es) died: read-through of cross-process communication detected
+  
+  STACK Bio::EnsEMBL::VEP::Runner::_forked_buffer_to_output /opt/vep/src/ensembl-vep/modules/Bio/EnsEMBL/VEP/Runner.pm:562
+  STACK Bio::EnsEMBL::VEP::Runner::next_output_line /opt/vep/src/ensembl-vep/modules/Bio/EnsEMBL/VEP/Runner.pm:367
+  STACK Bio::EnsEMBL::VEP::Runner::run /opt/vep/src/ensembl-vep/modules/Bio/EnsEMBL/VEP/Runner.pm:208
+  STACK toplevel /opt/vep/src/ensembl-vep/vep:46
+  Date (localtime)    = Tue Jul 21 15:18:48 2026
+  Ensembl API version = 113
+  ---------------------------------------------------
+
+Work dir:
+  /sc/arion/scratch/luj12/nf-germline-plp-carrier/0e/1e9536e632978077989c5a13b43e59
+
+Tip: you can replicate the issue by changing to the process work dir and entering the command `bash .command.run`
+
+ -- Check '.nextflow.log' file for details
+
+
+
+PS:
+
+Read file <logs/pilot.257315033.err> for stderr output of this job.
+

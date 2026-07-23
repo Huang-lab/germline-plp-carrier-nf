@@ -47,6 +47,19 @@ def requirePath(name, val) {
     return val.toString()
 }
 
+// QC-only entry point: run with `-entry NORM_ONLY` to produce and publish
+// norm_qc/*.norm.vcf.gz and stop. No VEP, no classifiers.
+workflow NORM_ONLY {
+    requirePath('input_vcfs', params.input_vcfs)
+    requirePath('reference_fasta', params.reference_fasta)
+
+    Channel.fromPath(params.input_vcfs, checkIfExists: true)
+        .map { f -> tuple(f.baseName.replaceAll(/\.vcf(\.gz)?$/, ''), f) }
+        .set { chunk_ch }
+
+    NORM_QC(chunk_ch, file(params.reference_fasta))
+}
+
 workflow {
     requirePath('input_vcfs', params.input_vcfs)
     requirePath('reference_fasta', params.reference_fasta)
