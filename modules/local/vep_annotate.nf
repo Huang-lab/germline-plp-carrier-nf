@@ -12,7 +12,7 @@ process VEP_ANNOTATE {
     path loftee_data_dir
 
     output:
-    tuple val(chunk_id), path("${chunk_id}.vep.vcf"), emit: vcf
+    tuple val(chunk_id), path("${chunk_id}.vep.vcf.gz"), emit: vcf
 
     script:
     def cache_ver = params.vep_cache_version ?: params.vep_assembly
@@ -45,7 +45,8 @@ process VEP_ANNOTATE {
             EXTRA="\$EXTRA --plugin LoF,loftee_path:/opt/loftee,human_ancestor_fa:${loftee_data_dir}/human_ancestor.fa.gz"
         fi
 
-        vep --input_file ${vcf} --output_file ${chunk_id}.vep.vcf --vcf \\
+        vep --input_file ${vcf} --output_file ${chunk_id}.vep.vcf.gz --vcf \\
+            --compress_output bgzip \\
             --force_overwrite --no_stats --offline --cache \\
             --dir_cache ${vep_cache_dir} --cache_version ${cache_ver} \\
             --species ${params.vep_species} --assembly ${params.vep_assembly} \\
@@ -55,8 +56,9 @@ process VEP_ANNOTATE {
             \$EXTRA
     else
         # Test-profile fallback: synthesize a minimal VEP-like CSQ header + a CSQ INFO tag
-        # for each variant, using SYMBOL from a fixed lookup table in the fixture.
+        # for each variant, then bgzip-equivalent gzip.
         python3 ${projectDir}/bin/synthetic_vep.py --in ${vcf} --out ${chunk_id}.vep.vcf
+        gzip -f ${chunk_id}.vep.vcf
     fi
     """
 }

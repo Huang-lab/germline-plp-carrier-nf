@@ -8,7 +8,15 @@ Rewrites the INFO to add a compatible CSQ tag so downstream modules can run unch
 """
 from __future__ import annotations
 import argparse
+import gzip
+import io
 import sys
+
+
+def _open_in(path: str):
+    if path.endswith(".gz") or path.endswith(".bgz"):
+        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8")
+    return open(path, "r", encoding="utf-8")
 
 CSQ_HEADER = (
     '##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. '
@@ -43,7 +51,7 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    with open(args.inp, "r", encoding="utf-8") as fh, open(args.out, "w", encoding="utf-8") as out:
+    with _open_in(args.inp) as fh, open(args.out, "w", encoding="utf-8") as out:
         emitted_csq_header = False
         for line in fh:
             if line.startswith("##"):
