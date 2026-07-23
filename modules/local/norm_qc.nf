@@ -6,7 +6,7 @@ process NORM_QC {
     path reference_fasta
 
     output:
-    tuple val(chunk_id), path("${chunk_id}.norm.vcf"), emit: vcf
+    tuple val(chunk_id), path("${chunk_id}.norm.vcf.gz"), emit: vcf
 
     script:
     def min_dp = params.min_dp
@@ -37,16 +37,18 @@ process NORM_QC {
             SRC=${vcf}
         fi
 
-        bcftools norm -m -any -f ${reference_fasta} "\$SRC" -Ov \\
-          | bcftools view -f PASS,. -Ov \\
-          | bcftools +setGT -Ov -- \\
+        # Write BGZIP-compressed output (-Oz) — ~10x smaller than uncompressed,
+        # so the work dir and published copy don't exhaust disk. Downstream
+        # (VEP, classifiers) all read .gz.
+        bcftools norm -m -any -f ${reference_fasta} "\$SRC" -Ou \\
+          | bcftools view -f PASS,. -Ou \\
+          | bcftools +setGT -Oz -o ${chunk_id}.norm.vcf.gz -- \\
               -t q -n . \\
-              -i 'FMT/DP<${min_dp} | FMT/GQ<${min_gq}' \\
-          > ${chunk_id}.norm.vcf
+              -i 'FMT/DP<${min_dp} | FMT/GQ<${min_gq}'
     else
         # Test-profile fallback: no bcftools available; passthrough while asserting the file is a VCF.
         head -c 4 ${vcf} | grep -q '##' || { echo "not a VCF"; exit 2; }
-        cp ${vcf} ${chunk_id}.norm.vcf
+        gzip -c ${vcf} > ${chunk_id}.norm.vcf.gz
     fi
     """
 }
