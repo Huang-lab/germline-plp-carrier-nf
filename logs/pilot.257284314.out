@@ -1,0 +1,233 @@
+Sender: LSF System <lsfadmin@lh06g07>
+Subject: Job 257284314: <plp-pilot> in cluster <chimera> Exited
+
+Job <plp-pilot> was submitted from host <li04e02> by user <luj12> in cluster <chimera> at Mon Jul 20 17:55:35 2026
+Job was executed on host(s) <2*lh06g07>, in queue <premium>, as user <luj12> in cluster <chimera> at Mon Jul 20 17:55:40 2026
+</hpc/users/luj12> was used as the home directory.
+</sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf> was used as the working directory.
+Started at Mon Jul 20 17:55:40 2026
+Terminated at Mon Jul 20 17:56:23 2026
+Results reported at Mon Jul 20 17:56:23 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+ml java anaconda3 singularity-ce
+source activate nextflow
+export MINERVA_ALLOCATION=acc_rg_huangk06
+export SINGULARITY_CACHEDIR=/sc/arion/work/$USER/singularity_cache
+export SINGULARITY_TMPDIR=/sc/arion/work/$USER/singularity_tmp
+export http_proxy=http://172.28.7.1:3128 https_proxy=http://172.28.7.1:3128 all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+cd /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf
+nextflow run . -profile minerva -params-file params/msm.local.yaml \
+    --classifiers clinvar --input_vcfs '/sc/arion/projects/MSM/data/WES/combined/batch_001/pVCF/Target/Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz' --outdir '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-pilot'
+
+------------------------------------------------------------
+
+Exited with exit code 1.
+
+Resource usage summary:
+
+    CPU time :                                   17.62 sec.
+    Max Memory :                                 274 MB
+    Average Memory :                             205.70 MB
+    Total Requested Memory :                     16000.00 MB
+    Delta Memory :                               15726.00 MB
+    Max Swap :                                   -
+    Max Processes :                              6
+    Max Threads :                                28
+    Run time :                                   43 sec.
+    Turnaround time :                            48 sec.
+
+The output (if any) follows:
+
+N E X T F L O W  ~  version 23.10.1
+Launching `./main.nf` [nauseous_varahamihira] DSL2 - revision: c58be7bd15
+germline-plp-carrier-nf: classifiers = [clinvar]
+[-        ] process > NORM_QC          -
+[-        ] process > VEP_ANNOTATE     -
+[-        ] process > VALIDATE_CHUNK   -
+[-        ] process > CLINVAR_CLASSIFY -
+[-        ] process > PER_GENE_QC      -
+[-        ] process > CARRIER_MATRIX   -
+
+[-        ] process > NORM_QC               [  0%] 0 of 1
+[-        ] process > VEP_ANNOTATE          -
+[-        ] process > VALIDATE_CHUNK        -
+[-        ] process > CLINVAR_CLASSIFY      -
+[-        ] process > PER_GENE_QC           -
+[-        ] process > CARRIER_MATRIX        -
+[-        ] process > CONCAT_CARRIER_MATRIX -
+[-        ] process > MANIFEST              [  0%] 0 of 1
+
+executor >  lsf (1)
+[7c/bcc2f2] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 1
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[-        ] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (2)
+[7c/bcc2f2] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 1
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[30/b38f5b] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (2)
+[7c/bcc2f2] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 1
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[30/b38f5b] process > MANIFEST                       [  0%] 0 of 1
+ERROR ~ Error executing process > 'NORM_QC (Targeted_MSM_b001_260_chr10_133546508_133797422)'
+
+Caused by:
+  Process `NORM_QC (Targeted_MSM_b001_260_chr10_133546508_133797422)` terminated with an error exit status (255)
+
+Command executed:
+
+  set -euo pipefail
+  if command -v bcftools >/dev/null 2>&1 && [ -s "Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz" ]; then
+      # Contig-naming reconciliation. The reference FASTA, VEP cache, and NCBI
+      # ClinVar are Ensembl-style (1,2,...,X,Y,MT); input VCFs may be UCSC-style
+      # (chr1,...,chrM). Build a rename map from the VCF's own chr-prefixed
+      # contigs so everything downstream is in one naming space.
+      bcftools view -h Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz \
+        | awk -F'[=,>]' '/^##contig/{for(i=1;i<=NF;i++) if($i=="ID"){print $(i+1)}}' \
+        > contigs.txt
+      : > chr_map.txt
+      while read -r c; do
+          case "$c" in
+              chrM|chrMT) printf '%s\tMT\n'  "$c" >> chr_map.txt ;;
+              chr*)       printf '%s\t%s\n' "$c" "${c#chr}" >> chr_map.txt ;;
+          esac
+      done < contigs.txt
+  
+      if [ -s chr_map.txt ]; then
+          bcftools annotate --rename-chrs chr_map.txt Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz -Oz -o renamed.vcf.gz
+          SRC=renamed.vcf.gz
+      else
+          SRC=Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz
+      fi
+  
+      bcftools norm -m -any -f Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz "$SRC" -Ov \
+        | bcftools view -f PASS,. -Ov \
+        | bcftools +setGT -Ov -- \
+            -t q -n . \
+            -i 'FMT/DP<10 | FMT/GQ<20' \
+        > Targeted_MSM_b001_260_chr10_133546508_133797422.norm.vcf
+  else
+      # Test-profile fallback: no bcftools available; passthrough while asserting the file is a VCF.
+      head -c 4 Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz | grep -q '##' || { echo "not a VCF"; exit 2; }
+      cp Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz Targeted_MSM_b001_260_chr10_133546508_133797422.norm.vcf
+  fi
+
+Command exit status:
+  255
+
+Command output:
+  (empty)
+
+Command error:
+  [E::faidx_adjust_position] The sequence "chr10" was not found
+  faidx_fetch_seq failed at chr10:133554306
+  Filled 0 alleles
+
+Work dir:
+  /sc/arion/scratch/luj12/nf-germline-plp-carrier/7c/bcc2f2e4f071b659860242db0f2c5b
+
+Tip: you can replicate the issue by changing to the process work dir and entering the command `bash .command.run`
+
+ -- Check '.nextflow.log' file for details
+
+executor >  lsf (2)
+[7c/bcc2f2] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, failed: 1 ✘
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[30/b38f5b] process > MANIFEST                       [100%] 1 of 1 ✔
+Execution cancelled -- Finishing pending tasks before exit
+ERROR ~ Error executing process > 'NORM_QC (Targeted_MSM_b001_260_chr10_133546508_133797422)'
+
+Caused by:
+  Process `NORM_QC (Targeted_MSM_b001_260_chr10_133546508_133797422)` terminated with an error exit status (255)
+
+Command executed:
+
+  set -euo pipefail
+  if command -v bcftools >/dev/null 2>&1 && [ -s "Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz" ]; then
+      # Contig-naming reconciliation. The reference FASTA, VEP cache, and NCBI
+      # ClinVar are Ensembl-style (1,2,...,X,Y,MT); input VCFs may be UCSC-style
+      # (chr1,...,chrM). Build a rename map from the VCF's own chr-prefixed
+      # contigs so everything downstream is in one naming space.
+      bcftools view -h Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz \
+        | awk -F'[=,>]' '/^##contig/{for(i=1;i<=NF;i++) if($i=="ID"){print $(i+1)}}' \
+        > contigs.txt
+      : > chr_map.txt
+      while read -r c; do
+          case "$c" in
+              chrM|chrMT) printf '%s\tMT\n'  "$c" >> chr_map.txt ;;
+              chr*)       printf '%s\t%s\n' "$c" "${c#chr}" >> chr_map.txt ;;
+          esac
+      done < contigs.txt
+  
+      if [ -s chr_map.txt ]; then
+          bcftools annotate --rename-chrs chr_map.txt Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz -Oz -o renamed.vcf.gz
+          SRC=renamed.vcf.gz
+      else
+          SRC=Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz
+      fi
+  
+      bcftools norm -m -any -f Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz "$SRC" -Ov \
+        | bcftools view -f PASS,. -Ov \
+        | bcftools +setGT -Ov -- \
+            -t q -n . \
+            -i 'FMT/DP<10 | FMT/GQ<20' \
+        > Targeted_MSM_b001_260_chr10_133546508_133797422.norm.vcf
+  else
+      # Test-profile fallback: no bcftools available; passthrough while asserting the file is a VCF.
+      head -c 4 Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz | grep -q '##' || { echo "not a VCF"; exit 2; }
+      cp Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz Targeted_MSM_b001_260_chr10_133546508_133797422.norm.vcf
+  fi
+
+Command exit status:
+  255
+
+Command output:
+  (empty)
+
+Command error:
+  [E::faidx_adjust_position] The sequence "chr10" was not found
+  faidx_fetch_seq failed at chr10:133554306
+  Filled 0 alleles
+
+Work dir:
+  /sc/arion/scratch/luj12/nf-germline-plp-carrier/7c/bcc2f2e4f071b659860242db0f2c5b
+
+Tip: you can replicate the issue by changing to the process work dir and entering the command `bash .command.run`
+
+ -- Check '.nextflow.log' file for details
+
+
+
+PS:
+
+Read file <logs/pilot.257284314.err> for stderr output of this job.
+

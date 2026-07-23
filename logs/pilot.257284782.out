@@ -1,0 +1,160 @@
+Sender: LSF System <lsfadmin@lh06c32>
+Subject: Job 257284782: <plp-pilot> in cluster <chimera> Exited
+
+Job <plp-pilot> was submitted from host <li04e02> by user <luj12> in cluster <chimera> at Mon Jul 20 18:23:44 2026
+Job was executed on host(s) <2*lh06c32>, in queue <premium>, as user <luj12> in cluster <chimera> at Mon Jul 20 18:23:48 2026
+</hpc/users/luj12> was used as the home directory.
+</sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf> was used as the working directory.
+Started at Mon Jul 20 18:23:48 2026
+Terminated at Mon Jul 20 18:25:29 2026
+Results reported at Mon Jul 20 18:25:29 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+ml java anaconda3 singularity-ce
+source activate nextflow
+export MINERVA_ALLOCATION=acc_rg_huangk06
+export SINGULARITY_CACHEDIR=/sc/arion/work/$USER/singularity_cache
+export SINGULARITY_TMPDIR=/sc/arion/work/$USER/singularity_tmp
+export http_proxy=http://172.28.7.1:3128 https_proxy=http://172.28.7.1:3128 all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+cd /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf
+nextflow run . -profile minerva -params-file params/msm.local.yaml \
+    --classifiers clinvar --input_vcfs '/sc/arion/projects/MSM/data/WES/combined/batch_001/pVCF/Target/Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz' --outdir '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-pilot'
+
+------------------------------------------------------------
+
+Exited with exit code 1.
+
+Resource usage summary:
+
+    CPU time :                                   15.09 sec.
+    Max Memory :                                 355 MB
+    Average Memory :                             213.21 MB
+    Total Requested Memory :                     16000.00 MB
+    Delta Memory :                               15645.00 MB
+    Max Swap :                                   -
+    Max Processes :                              5
+    Max Threads :                                33
+    Run time :                                   101 sec.
+    Turnaround time :                            105 sec.
+
+The output (if any) follows:
+
+N E X T F L O W  ~  version 23.10.1
+Launching `./main.nf` [maniac_carson] DSL2 - revision: c58be7bd15
+germline-plp-carrier-nf: classifiers = [clinvar]
+[-        ] process > NORM_QC          -
+[-        ] process > VEP_ANNOTATE     -
+[-        ] process > VALIDATE_CHUNK   -
+[-        ] process > CLINVAR_CLASSIFY -
+[-        ] process > PER_GENE_QC      -
+
+[-        ] process > NORM_QC               [  0%] 0 of 1
+[-        ] process > VEP_ANNOTATE          -
+[-        ] process > VALIDATE_CHUNK        -
+[-        ] process > CLINVAR_CLASSIFY      -
+[-        ] process > PER_GENE_QC           -
+[-        ] process > CARRIER_MATRIX        -
+[-        ] process > CONCAT_CARRIER_MATRIX -
+[-        ] process > MANIFEST              [  0%] 0 of 1
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 1
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 1
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 1
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1 ✔
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1 ✔
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1 ✔
+ERROR ~ Error executing process > 'VEP_ANNOTATE (1)'
+
+Caused by:
+  Process `VEP_ANNOTATE` input file name collision -- There are multiple input files for each of the following file names: .empty_input
+
+
+Tip: view the complete command output by changing to the process work dir and entering the command `cat .command.out`
+
+ -- Check '.nextflow.log' file for details
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1 ✔
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1 ✔
+Execution cancelled -- Finishing pending tasks before exit
+ERROR ~ Error executing process > 'VEP_ANNOTATE (1)'
+
+Caused by:
+  Process `VEP_ANNOTATE` input file name collision -- There are multiple input files for each of the following file names: .empty_input
+
+
+Tip: view the complete command output by changing to the process work dir and entering the command `cat .command.out`
+
+ -- Check '.nextflow.log' file for details
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1 ✔
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1 ✔
+Execution cancelled -- Finishing pending tasks before exit
+ERROR ~ Error executing process > 'VEP_ANNOTATE (1)'
+
+Caused by:
+  Process `VEP_ANNOTATE` input file name collision -- There are multiple input files for each of the following file names: .empty_input
+
+
+Tip: view the complete command output by changing to the process work dir and entering the command `cat .command.out`
+
+ -- Check '.nextflow.log' file for details
+
+
+
+PS:
+
+Read file <logs/pilot.257284782.err> for stderr output of this job.
+
