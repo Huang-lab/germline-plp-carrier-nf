@@ -71,10 +71,22 @@ workflow {
         .map { f -> tuple(f.baseName.replaceAll(/\.vcf(\.gz)?$/, ''), f) }
         .set { chunk_ch }
 
-    NORM_QC(chunk_ch, file(params.reference_fasta))
+    // When --skip_norm_qc is set, inputs are taken to be ALREADY normalized,
+    // PASS-filtered, genotype-QC'd and contig-reconciled (Ensembl-style), e.g.
+    // the norm_qc/*.norm.vcf.gz published by a previous run of this pipeline.
+    // NORM_QC is then bypassed and inputs flow straight into VEP.
+    def norm_ch
+    if (params.skip_norm_qc) {
+        log.warn "skip_norm_qc: bypassing NORM_QC — inputs assumed already normalized/QC'd " +
+                 "(min_dp=${params.min_dp}, min_gq=${params.min_gq} NOT applied in this run)"
+        norm_ch = chunk_ch
+    } else {
+        NORM_QC(chunk_ch, file(params.reference_fasta))
+        norm_ch = NORM_QC.out.vcf
+    }
 
     VEP_ANNOTATE(
-        NORM_QC.out.vcf,
+        norm_ch,
         optionalFile(params.vep_cache_dir, 'vep_cache_dir'),
         file(params.reference_fasta),
         optionalFile(params.clinvar_vcf, 'clinvar_vcf'),
