@@ -1,89 +1,104 @@
-# acmg_fastvep — standalone ACMG-AMP via fastVEP
+# acmg_fastvep — standalone fastVEP annotation (and ACMG) on QC'd VCFs
 
-ACMG-AMP P/LP classification using **[fastVEP](https://github.com/Huang-lab/fastVEP)**
-(`--acmg`: full Richards 2015 + ClinGen SVI, 28 criteria) instead of
-ANNOVAR/InterVar.
+Run **[fastVEP](https://github.com/Huang-lab/fastVEP)** (a Rust VEP reimplementation)
+on the VCFs the Nextflow pipeline QC-normalizes — **outside** the pipeline, as plain
+scripts. Two modes:
 
-**This is intentionally OUTSIDE the Nextflow pipeline.** It runs after the
-pipeline's QC step, on the QC'd VCFs the pipeline already publishes, so ACMG is
-applied to exactly the same variants as the ClinVar calls — without touching the
-working ClinVar pipeline. Once validated, folding it into `main.nf` (replacing
-the ANNOVAR/InterVar module) is a small, low-risk step.
+| Mode | Flag | Needs | Output |
+|---|---|---|---|
+| **Plain annotation** (default) | — | a GFF3 (+ FASTA for HGVS) | `<name>.fastvep.vcf` (CSQ: consequence, gene, HGVS, …) |
+| **ACMG-AMP P/LP** | `--acmg` | GFF3 + FASTA + `--sa-dir` (supplementary DBs) | above **plus** `<name>.acmg_plp.tsv` (pipeline schema) |
 
-## What it does
-```
-QC'd VCF (results/<run>/norm_qc/*.norm.vcf)   # Ensembl contigs, PASS-only, GT-masked
-      │
-      ▼  fastvep annotate --acmg --output-format vcf
-<name>.fastvep.vcf                            # CSQ incl. ACMG + ACMG_CRITERIA
-      │
-      ▼  parse_fastvep_acmg.py
-<name>.acmg_plp.tsv                           # pipeline acmg_plp.tsv schema
-```
-Output columns (identical to the pipeline's `acmg_plp.tsv`, so it's drop-in for
-the carrier matrix later):
-`chr, pos, ref, alt, gene, acmg_label, acmg_criteria, n_pathogenic_criteria, n_benign_criteria, is_acmg_PLP`
+**Why standalone:** it runs on the pipeline's already-published QC'd VCFs
+(`results/<run>/norm_qc/<chunk>.norm.vcf.gz` — Ensembl contigs, PASS-only,
+GT-masked), so fastVEP sees exactly the variants the ClinVar path does, without
+touching `main.nf`. fastVEP is a native binary — **no Singularity/container or
+`module load` needed** (unlike the Nextflow steps).
 
-Per-variant collapse: fastVEP emits per-transcript ACMG; the parser keeps the
-**most severe** call across transcripts (P > LP > VUS > LB > B). `is_acmg_PLP` = 1
-for P or LP.
+Plain annotation runs with **only a GFF3** — no gnomAD/ClinVar/REVEL downloads — so
+you can prove fastVEP works on your data today, then layer ACMG on later.
 
-## One-time setup on Minerva
+## Files
+- `setup_fastvep.sh` — one-time: build `fastvep` + fetch the Ensembl GRCh38 GFF3.
+- `run_fastvep.sh` — annotate one VCF (plain, or `--acmg`). **Main entry point.**
+- `run_fastvep_batch.sh` — run over a whole `norm_qc/` directory (local or one
+  `bsub` per chunk); writes a chunk→status manifest.
+- `run_fastvep_acmg.sh` — back-compat shim = `run_fastvep.sh --acmg`.
+- `parse_fastvep_acmg.py` — CSQ `ACMG`/`ACMG_CRITERIA` → `acmg_plp.tsv` (used in
+  `--acmg` mode). Reuses `plp_rules/csq.py`.
 
-### 1. Install fastVEP
+## 1. One-time setup
 ```bash
-# Rust toolchain, then build
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh && source "$HOME/.cargo/env"
-git clone https://github.com/Huang-lab/fastVEP.git && cd fastVEP
-cargo install --path crates/fastvep-cli     # installs `fastvep` to ~/.cargo/bin
-fastvep --version
-```
-(Or the conda recipe under `fastVEP/conda/recipe/` — see fastVEP README.)
+# reuse the SAME GRCh38 FASTA the pipeline uses (from params/msm.local.yaml)
+acmg_fastvep/setup_fastvep.sh \
+  --refdir /sc/arion/work/$USER/fastvep-refs \
+  --fasta  /sc/arion/projects/rg_huangk06/variants_PLP_MSM/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa
 
-### 2. Gene models + reference
+# it prints the exact FASTVEP / GFF3 / FASTA exports to reuse below.
+```
+`--skip-build` if `fastvep` is already on PATH; `--build-cache` to pre-build the
+transcript cache (otherwise auto-built next to the GFF3 on first run).
+
+## 2. Plain annotation (the "just make it run" path)
+One chunk:
 ```bash
-# GFF3 (Ensembl) and the SAME GRCh38 FASTA the pipeline uses (bgzipped+faidx ok)
-#   Homo_sapiens.GRCh38.<rel>.gff3
-#   Homo_sapiens.GRCh38.dna.primary_assembly.fa(.bgz) + .fai
+export GFF3=/sc/arion/work/$USER/fastvep-refs/Homo_sapiens.GRCh38.115.gff3
+export FASTA=/sc/arion/projects/rg_huangk06/variants_PLP_MSM/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa
+
+acmg_fastvep/run_fastvep.sh \
+  -i  results-chr1/norm_qc/<chunk>.norm.vcf.gz \
+  -o  results-fastvep \
+  --gff3 "$GFF3" --fasta "$FASTA" --hgvs
+# -> results-fastvep/<chunk>.fastvep.vcf
 ```
-
-### 3. Supplementary databases (`$SA_DIR`, the big step)
-Follow **fastVEP `docs/ACMG_SETUP.md`**. Minimum viable ACMG (~90% of criteria):
-- **gnomAD v4** (BA1/BS1/BS2/PM2) — largest source
-- **ClinVar** (PP5/BP6 optional; PM2 frequency backstop) — pin the **same
-  release date** you used for the ClinVar pipeline for consistency
-- **REVEL** (PP3/BP4 missense)
-- gene-level `.oga` (PVS1/PS1/PM1/PM5 — constraint, ClinGen GDV)
-
-Each is `fastvep sa-build --source <s> -i <downloaded> -o $SA_DIR/<s> --assembly GRCh38`.
-Verify `.osa` sizes are non-trivial (a few-KB `.osa` = empty build).
-
-## Run it (per chunk, or loop over the pipeline's QC output)
+All chunks in a run (local, sequential):
 ```bash
-export SA_DIR=/sc/arion/work/$USER/fastvep_sa
-GFF3=/sc/arion/work/$USER/germline-plp-refs/Homo_sapiens.GRCh38.115.gff3
-FASTA=/sc/arion/projects/rg_huangk06/variants_PLP_MSM/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz
-
-acmg_fastvep/run_fastvep_acmg.sh \
-  -i  /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/<chunk>.norm.vcf \
-  -o  /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1-acmg \
-  --gff3 "$GFF3" --fasta "$FASTA" --sa-dir "$SA_DIR"
+acmg_fastvep/run_fastvep_batch.sh \
+  --in-dir results-chr1/norm_qc -o results-fastvep \
+  --gff3 "$GFF3" --fasta "$FASTA" --hgvs
 ```
-Run under LSF for many chunks (loop, or one `bsub` per chunk) — fastVEP is
-multi-threaded, so give it several cores.
+Or one LSF job per chunk (fastVEP is multithreaded):
+```bash
+acmg_fastvep/run_fastvep_batch.sh \
+  --in-dir results-chr1/norm_qc -o results-fastvep \
+  --gff3 "$GFF3" --fasta "$FASTA" --hgvs \
+  --lsf -P "$MINERVA_ALLOCATION" --threads 4
+# batch_manifest.tsv records chunk -> ok/FAILED/submitted (no silent drops).
+```
+
+## 3. ACMG mode (later — needs supplementary DBs)
+Build the DBs once per fastVEP `docs/ACMG_SETUP.md` (gnomAD v4, ClinVar — pin the
+same release as the ClinVar pipeline — REVEL, gene-level), each via
+`fastvep sa-build --source <s> -i <download> -o <SA_DIR>/<s> --assembly GRCh38`
+(`sa-build` is a **converter, not a downloader** — download the source first, or the
+`.osa` will be empty). Then add `--acmg --sa-dir`:
+```bash
+acmg_fastvep/run_fastvep.sh \
+  -i results-chr1/norm_qc/<chunk>.norm.vcf.gz -o results-fastvep-acmg \
+  --gff3 "$GFF3" --fasta "$FASTA" --acmg --sa-dir /sc/arion/work/$USER/fastvep_sa
+# -> <chunk>.fastvep.vcf  AND  <chunk>.acmg_plp.tsv
+```
+`acmg_plp.tsv` columns (identical to the pipeline's, so it is drop-in for the carrier
+matrix later): `chr, pos, ref, alt, gene, acmg_label, acmg_criteria,
+n_pathogenic_criteria, n_benign_criteria, is_acmg_PLP`. Per variant the parser keeps
+the **most severe** call across transcripts (P > LP > VUS > LB > B); `is_acmg_PLP=1`
+for P/LP.
 
 ## Notes
-- **Contigs:** feed the pipeline's `*.norm.vcf` (already stripped to Ensembl
-  `1,2,…`). Ensure your GFF3/FASTA/SA are the same GRCh38/Ensembl space.
-- **Thresholds:** override any ACMG threshold via `--acmg-config <config.toml>`
-  (see fastVEP `docs/ACMG.md`).
-- **Later integration:** because the output matches `acmg_plp.tsv`, wiring this
-  into the pipeline = a new module that runs `run_fastvep_acmg.sh` and feeds the
-  TSV into `CARRIER_GT`/`CARRIER_MATRIX` alongside the ClinVar table.
+- **Contigs:** feed the pipeline's `*.norm.vcf.gz` (Ensembl `1,2,…`); the GFF3/FASTA
+  (and any SA DBs) must be the same GRCh38/Ensembl space.
+- The CSQ `ACMG`/`ACMG_CRITERIA` columns always appear in the header but are only
+  *filled* when `--acmg` is passed.
+- **Later integration:** because `acmg_plp.tsv` matches the pipeline schema, folding
+  this into `main.nf` = a module that runs `run_fastvep.sh --acmg` and feeds the TSV
+  into `CARRIER_GT`/`CARRIER_MATRIX` alongside the ClinVar table.
 
 ## Tests
 ```bash
 python -m pytest acmg_fastvep/tests/ -q
 ```
-Validates the CSQ→acmg_plp parser (severity collapse, criteria counts,
-P/LP flag) on a synthetic fastVEP VCF — no fastVEP install needed.
+- `test_parse_fastvep_acmg.py` — parser (severity collapse, criteria counts, P/LP
+  flag) on a synthetic VCF; no fastVEP needed.
+- `test_run_fastvep_smoke.py` — drives `run_fastvep.sh` on fastVEP's own
+  `tests/test.vcf`; **auto-skips** when `fastvep` isn't on PATH (set `FASTVEP_SRC` if
+  the checkout isn't `/workspace/fastvep`).
