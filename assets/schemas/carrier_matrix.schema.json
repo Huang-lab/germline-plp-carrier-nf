@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "carrier_matrix.schema.json",
+  "title": "carrier_matrix.tsv (long)",
+  "type": "object",
+  "properties": {
+    "columns": {
+      "type": "array",
+      "prefixItems": [
+        {"const": "chr"},
+        {"const": "pos"},
+        {"const": "ref"},
+        {"const": "alt"},
+        {"const": "gene"},
+        {"const": "person_id"},
+        {"const": "GT"},
+        {"const": "zygosity"},
+        {"const": "is_clinvar_PLP"},
+        {"const": "is_acmg_PLP"},
+        {"const": "is_AM_PLP"}
+      ],
+      "minItems": 11
+    }
+  }
+}

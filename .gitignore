@@ -1,0 +1,56 @@
+# Runtime & build artifacts
+work/
+results/
+.nextflow/
+.nextflow*
+*.sif
+*.img
+resources/
+references/
+humandb/
+intervardb/
+annovar/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Data patterns — never commit
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.vcf.bgz
+*.bcf
+*.bcf.csi
+*.bgen
+*.bed
+*.bim
+*.fam
+*.cram
+*.crai
+*.bam
+*.bai
+
+# Top-level tabular data (whitelisted paths below)
+/*.tsv
+/*.csv
+/*.txt
+
+# Sample-ID patterns
+SINAI_*
+SINAI-Million_*
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Whitelist: fixtures, docs, configs
+!tests/synthetic/**
+!docs/**/*.md
+!*.config
+!*.yaml
+!*.yml
+logs/

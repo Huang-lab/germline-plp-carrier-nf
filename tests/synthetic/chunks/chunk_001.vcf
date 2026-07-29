@@ -1,0 +1,15 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##INFO=<ID=SYN,Number=.,Type=String,Description="Synthetic fixture annotations: SYMBOL|Consequence|am_pathogenicity|LoF|CLNSIG|CLNREVSTAT|gnomAD_AF|gnomAD_AF_grpmax|ACMG_LABEL">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depths">
+##contig=<ID=chr21,length=48129895>
+##contig=<ID=chr22,length=51304566>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SYNTH_A	SYNTH_B	SYNTH_C	SYNTH_D
+chr21	1000100	.	A	T	100	PASS	SYN=FAKEGENE1|missense_variant|0.92|.|Pathogenic|reviewed_by_expert_panel|0.0001|0.0002|Pathogenic	GT:DP:GQ:AD	0/1:40:60:20,20	0/0:35:60:35,0	1/1:38:60:0,38	0/1:15:20:8,7
+chr21	1000200	.	G	C	100	PASS	SYN=FAKEGENE1|missense_variant|0.55|.|Uncertain_significance|criteria_provided,_single_submitter|0.001|0.002|Uncertain significance	GT:DP:GQ:AD	0/1:30:60:15,15	0/1:30:60:15,15	0/0:30:60:30,0	0/0:30:60:30,0
+chr22	2000100	.	C	A	100	PASS	SYN=FAKEGENE2|stop_gained|.|HC|Pathogenic|criteria_provided,_multiple_submitters,_no_conflicts|0.00005|0.00008|Likely pathogenic	GT:DP:GQ:AD	0/0:40:60:40,0	0/1:40:60:20,20	0/0:40:60:40,0	0/0:40:60:40,0
+chr22	2000200	.	T	G	100	PASS	SYN=FAKEGENE3|missense_variant|0.30|.|Benign|criteria_provided,_single_submitter|0.10|0.15|Benign	GT:DP:GQ:AD	0/1:40:60:20,20	0/0:40:60:40,0	0/1:40:60:20,20	1/1:40:60:0,40
+chr22	2000300	.	A	G	100	PASS	SYN=FAKEGENE4|missense_variant|0.88|.|.|.|.|.|Likely pathogenic	GT:DP:GQ:AD	0/0:30:60:30,0	0/1:30:60:15,15	0/0:30:60:30,0	0/1:30:60:15,15

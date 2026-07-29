@@ -1,0 +1,209 @@
+Sender: LSF System <lsfadmin@lh06c13>
+Subject: Job 257320109: <plp-pilot> in cluster <chimera> Done
+
+Job <plp-pilot> was submitted from host <li04e02> by user <luj12> in cluster <chimera> at Tue Jul 21 15:55:25 2026
+Job was executed on host(s) <2*lh06c13>, in queue <premium>, as user <luj12> in cluster <chimera> at Tue Jul 21 15:55:29 2026
+</hpc/users/luj12> was used as the home directory.
+</sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf> was used as the working directory.
+Started at Tue Jul 21 15:55:29 2026
+Terminated at Tue Jul 21 15:59:09 2026
+Results reported at Tue Jul 21 15:59:09 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+ml java anaconda3 singularity-ce
+source activate nextflow
+export MINERVA_ALLOCATION=acc_rg_huangk06
+export SINGULARITY_CACHEDIR=/sc/arion/work/$USER/singularity_cache
+export SINGULARITY_TMPDIR=/sc/arion/work/$USER/singularity_tmp
+export http_proxy=http://172.28.7.1:3128 https_proxy=http://172.28.7.1:3128 all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+cd /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf
+nextflow run . -profile minerva -params-file params/msm.local.yaml \
+    --classifiers clinvar --input_vcfs '/sc/arion/projects/MSM/data/WES/combined/batch_001/pVCF/Target/Targeted_MSM_b001_260_chr10_133546508_133797422.vcf.gz' --outdir '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-pilot' -resume
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   16.49 sec.
+    Max Memory :                                 357 MB
+    Average Memory :                             265.58 MB
+    Total Requested Memory :                     16000.00 MB
+    Delta Memory :                               15643.00 MB
+    Max Swap :                                   -
+    Max Processes :                              6
+    Max Threads :                                33
+    Run time :                                   220 sec.
+    Turnaround time :                            224 sec.
+
+The output (if any) follows:
+
+N E X T F L O W  ~  version 23.10.1
+Launching `./main.nf` [boring_joliot] DSL2 - revision: 7f46e25275
+germline-plp-carrier-nf: classifiers = [clinvar]
+[-        ] process > NORM_QC               -
+[-        ] process > VEP_ANNOTATE          -
+[-        ] process > VALIDATE_CHUNK        -
+[-        ] process > CLINVAR_CLASSIFY      -
+[-        ] process > PER_GENE_QC           -
+[-        ] process > CARRIER_MATRIX        -
+[-        ] process > CONCAT_CARRIER_MATRIX -
+[-        ] process > MANIFEST              -
+
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[-        ] process > VEP_ANNOTATE                   [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (1)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (1)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (2)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1 ✔
+[-        ] process > CLINVAR_CLASSIFY               [  0%] 0 of 1
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (3)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1 ✔
+[d7/c6bef0] process > CLINVAR_CLASSIFY (Targeted_... [  0%] 0 of 1
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (3)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1 ✔
+[d7/c6bef0] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1 ✔
+[-        ] process > PER_GENE_QC                    [  0%] 0 of 1
+[-        ] process > CARRIER_MATRIX                 [  0%] 0 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (5)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1 ✔
+[d7/c6bef0] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1 ✔
+[8e/3e94a1] process > PER_GENE_QC (Targeted_MSM_b... [  0%] 0 of 1
+[bf/cdf5ec] process > CARRIER_MATRIX (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (5)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1 ✔
+[d7/c6bef0] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1 ✔
+[8e/3e94a1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1 ✔
+[bf/cdf5ec] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1 ✔
+[-        ] process > CONCAT_CARRIER_MATRIX          [  0%] 0 of 1
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (6)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1 ✔
+[d7/c6bef0] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1 ✔
+[8e/3e94a1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1 ✔
+[bf/cdf5ec] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1 ✔
+[3e/69d2ab] process > CONCAT_CARRIER_MATRIX          [  0%] 0 of 1
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (6)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1 ✔
+[d7/c6bef0] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1 ✔
+[8e/3e94a1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1 ✔
+[bf/cdf5ec] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1 ✔
+[3e/69d2ab] process > CONCAT_CARRIER_MATRIX          [100%] 1 of 1 ✔
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+
+executor >  lsf (6)
+[b2/fb675d] process > NORM_QC (Targeted_MSM_b001_... [100%] 1 of 1, cached: 1 ✔
+[10/9a0295] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 1 of 1 ✔
+[54/f4e8c1] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1 ✔
+[d7/c6bef0] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1 ✔
+[8e/3e94a1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1 ✔
+[bf/cdf5ec] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1 ✔
+[3e/69d2ab] process > CONCAT_CARRIER_MATRIX          [100%] 1 of 1 ✔
+[fa/93252b] process > MANIFEST                       [100%] 1 of 1, cached: 1 ✔
+Completed at: 21-Jul-2026 15:59:09
+Duration    : 3m 31s
+CPU hours   : (a few seconds)
+Succeeded   : 6
+Cached      : 2
+
+
+
+
+PS:
+
+Read file <logs/pilot.257320109.err> for stderr output of this job.
+

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "manifest.schema.json",
+  "title": "germline-plp-carrier-nf run manifest",
+  "type": "object",
+  "required": [
+    "reference_build",
+    "vep",
+    "clinvar_release",
+    "gnomad_version",
+    "alphamissense",
+    "pipeline_git_sha"
+  ],
+  "properties": {
+    "reference_build": {"type": "string"},
+    "vep": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "string"},
+        "cache":   {"type": "string"}
+      }
+    },
+    "clinvar_release": {"type": "string"},
+    "gnomad_version":  {"type": "string"},
+    "alphamissense": {
+      "type": "object",
+      "properties": {
+        "data_version":       {"type": "string"},
+        "calibration_version":{"type": "string"}
+      }
+    },
+    "container_digests": {"type": "string"},
+    "pipeline_git_sha":  {"type": "string"},
+    "resource_versions_raw": {"type": "string"}
+  }
+}

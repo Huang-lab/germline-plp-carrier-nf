@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#BSUB -J germline-plp-carrier-nf
+#BSUB -q premium
+#BSUB -n 2
+#BSUB -R "rusage[mem=8000] span[hosts=1]"
+#BSUB -W 96:00
+#BSUB -oo logs/germline-plp-carrier-nf.%J.out
+#BSUB -eo logs/germline-plp-carrier-nf.%J.err
+# NOTE: also pass -P $MINERVA_ALLOCATION when submitting, e.g.:
+#   bsub -P $MINERVA_ALLOCATION < run_minerva.lsf
+
+set -euo pipefail
+
+: "${MINERVA_ALLOCATION:?export MINERVA_ALLOCATION=acc_<project> before submitting}"
+
+ml java anaconda3 singularity-ce
+source activate nextflow  # conda env, not the site nextflow module
+
+# Proxy REQUIRED on Minerva (nf-core mssm doc). Needed for LSF child submission
+# and any outbound network.
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+
+# Do not let Nextflow phone home (nextflow.io is unreachable from compute nodes
+# and stalls startup). Containers are local .sif files, so nothing is pulled.
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+export SINGULARITY_CACHEDIR="/sc/arion/work/${USER}/singularity_cache"
+export SINGULARITY_TMPDIR="/sc/arion/work/${USER}/singularity_tmp"
+
+mkdir -p logs "$SINGULARITY_CACHEDIR" "$SINGULARITY_TMPDIR"
+
+# Choose cohort by -params-file <cohort>.yaml; classifiers via --classifiers.
+PARAMS_FILE="${PARAMS_FILE:-params/msm.yaml}"
+CLASSIFIERS="${CLASSIFIERS:-clinvar}"
+
+nextflow run . \
+    -profile minerva \
+    -params-file "$PARAMS_FILE" \
+    --classifiers "$CLASSIFIERS" \
+    -resume

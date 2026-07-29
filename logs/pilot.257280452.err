@@ -1,0 +1,2 @@
+curl: (7) Failed to connect to www.nextflow.io:443 after 1715 ms: Could not connect to server
+Trace file already exists: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-pilot/pipeline_info/trace.txt -- enable the 'trace.overwrite' option in your config file to overwrite existing files

@@ -1,0 +1,1029 @@
+Sender: LSF System <lsfadmin@lh06c31>
+Subject: Job 257337580: <plp-chr1> in cluster <chimera> Exited
+
+Job <plp-chr1> was submitted from host <li04e02> by user <luj12> in cluster <chimera> at Tue Jul 21 22:37:36 2026
+Job was executed on host(s) <2*lh06c31>, in queue <premium>, as user <luj12> in cluster <chimera> at Tue Jul 21 22:37:38 2026
+</hpc/users/luj12> was used as the home directory.
+</sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf> was used as the working directory.
+Started at Tue Jul 21 22:37:38 2026
+Terminated at Tue Jul 21 22:57:10 2026
+Results reported at Tue Jul 21 22:57:10 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+ml java anaconda3 singularity-ce
+source activate nextflow
+export MINERVA_ALLOCATION=acc_rg_huangk06
+export SINGULARITY_CACHEDIR=/sc/arion/work/$USER/singularity_cache
+export SINGULARITY_TMPDIR=/sc/arion/work/$USER/singularity_tmp
+export http_proxy=http://172.28.7.1:3128 https_proxy=http://172.28.7.1:3128 all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+cd /sc/arion/projects/rg_huangk06/variants_PLP_MSM/germline-plp-carrier-nf
+nextflow run . -profile minerva -params-file params/msm.local.yaml \
+    --classifiers clinvar \
+    --input_vcfs '/sc/arion/projects/MSM/data/WES/combined/batch_001/pVCF/Target/*chr1_*.vcf.gz' \
+    --outdir '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1'
+
+------------------------------------------------------------
+
+TERM_OWNER: job killed by owner.
+Exited with exit code 1.
+
+Resource usage summary:
+
+    CPU time :                                   30.53 sec.
+    Max Memory :                                 419 MB
+    Average Memory :                             354.86 MB
+    Total Requested Memory :                     16000.00 MB
+    Delta Memory :                               15581.00 MB
+    Max Swap :                                   -
+    Max Processes :                              8
+    Max Threads :                                36
+    Run time :                                   1171 sec.
+    Turnaround time :                            1174 sec.
+
+The output (if any) follows:
+
+N E X T F L O W  ~  version 23.10.1
+Launching `./main.nf` [special_varahamihira] DSL2 - revision: 7f46e25275
+germline-plp-carrier-nf: classifiers = [clinvar]
+[-        ] process > NORM_QC               -
+[-        ] process > VEP_ANNOTATE          -
+[-        ] process > VALIDATE_CHUNK        -
+[-        ] process > CLINVAR_CLASSIFY      -
+[-        ] process > PER_GENE_QC           -
+[-        ] process > CARRIER_MATRIX        -
+[-        ] process > CONCAT_CARRIER_MATRIX -
+[-        ] process > MANIFEST              -
+
+[-        ] process > NORM_QC               [  0%] 0 of 8
+[-        ] process > VEP_ANNOTATE          -
+[-        ] process > VALIDATE_CHUNK        -
+[-        ] process > CLINVAR_CLASSIFY      -
+[-        ] process > PER_GENE_QC           -
+[-        ] process > CARRIER_MATRIX        -
+[-        ] process > CONCAT_CARRIER_MATRIX -
+[-        ] process > MANIFEST              [  0%] 0 of 1
+
+[-        ] process > NORM_QC               [  0%] 0 of 24
+[-        ] process > VEP_ANNOTATE          -
+[-        ] process > VALIDATE_CHUNK        -
+[-        ] process > CLINVAR_CLASSIFY      -
+[-        ] process > PER_GENE_QC           -
+[-        ] process > CARRIER_MATRIX        -
+[-        ] process > CONCAT_CARRIER_MATRIX -
+[-        ] process > MANIFEST              [  0%] 0 of 1
+
+executor >  lsf (2)
+[e7/150696] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 47
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[-        ] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (3)
+[e7/150696] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (4)
+[d2/4a2f47] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (5)
+[36/013bd2] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (6)
+[8f/651e80] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (7)
+[b6/4258c0] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (8)
+[94/10981d] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (9)
+[21/107d29] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (10)
+[a5/fc2f39] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (11)
+[c2/619b7c] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (12)
+[a4/ea1f0d] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (13)
+[7a/3aa6d2] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (14)
+[ff/b0f527] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (15)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (16)
+[87/8ae846] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (17)
+[1e/f01bbd] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (18)
+[cc/9114cb] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (19)
+[a5/a62708] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (20)
+[e1/7f758d] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (21)
+[e1/69dc64] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (22)
+[45/c44441] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (23)
+[cb/465985] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (24)
+[d5/e1552c] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (25)
+[1c/89f6e0] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (26)
+[1b/6d31a0] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (27)
+[3d/ff4ecc] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (28)
+[cd/a43174] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (29)
+[33/fa3ad4] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (30)
+[65/554178] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (31)
+[7d/8bbd6e] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (32)
+[1e/e986a3] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (33)
+[90/5d8348] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (34)
+[ad/a3b7ec] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (35)
+[2a/9c1e3f] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (36)
+[86/2c275c] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (37)
+[cb/1dd670] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (38)
+[1b/04229f] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (39)
+[50/91c905] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (40)
+[d0/2bbd87] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (41)
+[da/1ee56e] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (42)
+[b0/fd3662] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (43)
+[b9/48d684] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (44)
+[04/0d7199] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (45)
+[e7/e8fb69] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (46)
+[6b/a44828] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (47)
+[5d/20491b] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (48)
+[e6/8bf6a5] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (49)
+[5a/aa7153] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [  0%] 0 of 1
+
+executor >  lsf (49)
+[5a/aa7153] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+
+executor >  lsf (49)
+[5a/aa7153] process > NORM_QC (Targeted_MSM_b001_... [  0%] 0 of 48
+[-        ] process > VEP_ANNOTATE                   -
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+
+executor >  lsf (50)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[f1/72aa9e] process > VEP_ANNOTATE (Targeted_MSM_... [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+
+executor >  lsf (50)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[f1/72aa9e] process > VEP_ANNOTATE (Targeted_MSM_... [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/d6/3600cd9beb5fdf03a86250e6032cda/Targeted_MSM_b001_048_chr1_248111529_248956422.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_048_chr1_248111529_248956422.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (50)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[f1/72aa9e] process > VEP_ANNOTATE (Targeted_MSM_... [  0%] 0 of 1
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/d6/3600cd9beb5fdf03a86250e6032cda/Targeted_MSM_b001_048_chr1_248111529_248956422.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_048_chr1_248111529_248956422.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (51)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[af/e1a5b3] process > VEP_ANNOTATE (Targeted_MSM_... [ 50%] 1 of 2, failed: 1...
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+[f1/72aa9e] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_048_chr1_248111529_248956422)` terminated with an error exit status (130) -- Execution is retried (1)
+
+
+executor >  lsf (51)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[af/e1a5b3] process > VEP_ANNOTATE (Targeted_MSM_... [ 50%] 1 of 2, failed: 1...
+[-        ] process > VALIDATE_CHUNK                 -
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+[f1/72aa9e] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_048_chr1_248111529_248956422)` terminated with an error exit status (130) -- Execution is retried (1)
+
+
+executor >  lsf (51)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[af/e1a5b3] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 2 of 2, failed: 1...
+[-        ] process > VALIDATE_CHUNK                 [  0%] 0 of 1
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+
+
+executor >  lsf (52)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[af/e1a5b3] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 2 of 2, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+
+
+executor >  lsf (52)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[af/e1a5b3] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 2 of 2, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/af/e1a5b33e5bf5035f4ac26b362f0e68/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/vep/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf [copy] -- See log file for details
+
+executor >  lsf (52)
+[d6/3600cd] process > NORM_QC (Targeted_MSM_b001_... [  2%] 1 of 48
+[af/e1a5b3] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 2 of 2, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/af/e1a5b33e5bf5035f4ac26b362f0e68/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/vep/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf [copy] -- See log file for details
+
+executor >  lsf (52)
+[cc/9114cb] process > NORM_QC (Targeted_MSM_b001_... [  6%] 3 of 48
+[af/e1a5b3] process > VEP_ANNOTATE (Targeted_MSM_... [ 50%] 2 of 4, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CLINVAR_CLASSIFY               -
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+
+
+executor >  lsf (53)
+[cc/9114cb] process > NORM_QC (Targeted_MSM_b001_... [  6%] 3 of 48
+[a0/b733c6] process > VEP_ANNOTATE (Targeted_MSM_... [ 50%] 2 of 4, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[-        ] process > CLINVAR_CLASSIFY               [  0%] 0 of 1
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+
+
+executor >  lsf (54)
+[cc/9114cb] process > NORM_QC (Targeted_MSM_b001_... [  6%] 3 of 48
+[ce/e04eda] process > VEP_ANNOTATE (Targeted_MSM_... [ 50%] 2 of 4, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[-        ] process > CLINVAR_CLASSIFY               [  0%] 0 of 1
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+
+executor >  lsf (55)
+[cc/9114cb] process > NORM_QC (Targeted_MSM_b001_... [  6%] 3 of 48
+[ce/e04eda] process > VEP_ANNOTATE (Targeted_MSM_... [ 50%] 2 of 4, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [  0%] 0 of 1
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/d1/a4e079b37a34700b8dac8270bb4fae/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/cc/9114cbb19f9944d05ac8dbcd13c8cb/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (55)
+[cc/9114cb] process > NORM_QC (Targeted_MSM_b001_... [  6%] 3 of 48
+[ce/e04eda] process > VEP_ANNOTATE (Targeted_MSM_... [ 50%] 2 of 4, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [  0%] 0 of 1
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/d1/a4e079b37a34700b8dac8270bb4fae/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/cc/9114cbb19f9944d05ac8dbcd13c8cb/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/b2/3c099cbb005d74b3d402c27a88f888/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/validation/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf [copy] -- See log file for details
+
+executor >  lsf (55)
+[7a/3aa6d2] process > NORM_QC (Targeted_MSM_b001_... [  8%] 4 of 48
+[ce/e04eda] process > VEP_ANNOTATE (Targeted_MSM_... [ 40%] 2 of 5, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [  0%] 0 of 1
+[-        ] process > PER_GENE_QC                    -
+[-        ] process > CARRIER_MATRIX                 -
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/d1/a4e079b37a34700b8dac8270bb4fae/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/cc/9114cbb19f9944d05ac8dbcd13c8cb/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/b2/3c099cbb005d74b3d402c27a88f888/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/validation/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf [copy] -- See log file for details
+
+executor >  lsf (56)
+[7a/3aa6d2] process > NORM_QC (Targeted_MSM_b001_... [  8%] 4 of 48
+[6c/39fcd1] process > VEP_ANNOTATE (Targeted_MSM_... [ 40%] 2 of 5, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[-        ] process > PER_GENE_QC                    [  0%] 0 of 1
+[-        ] process > CARRIER_MATRIX                 [  0%] 0 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/d1/a4e079b37a34700b8dac8270bb4fae/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/cc/9114cbb19f9944d05ac8dbcd13c8cb/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/b2/3c099cbb005d74b3d402c27a88f888/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/validation/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf [copy] -- See log file for details
+
+executor >  lsf (57)
+[7a/3aa6d2] process > NORM_QC (Targeted_MSM_b001_... [  8%] 4 of 48
+[6c/39fcd1] process > VEP_ANNOTATE (Targeted_MSM_... [ 40%] 2 of 5, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [  0%] 0 of 1
+[-        ] process > CARRIER_MATRIX                 [  0%] 0 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/d1/a4e079b37a34700b8dac8270bb4fae/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/cc/9114cbb19f9944d05ac8dbcd13c8cb/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/b2/3c099cbb005d74b3d402c27a88f888/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/validation/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf [copy] -- See log file for details
+
+executor >  lsf (58)
+[7a/3aa6d2] process > NORM_QC (Targeted_MSM_b001_... [  8%] 4 of 48
+[6c/39fcd1] process > VEP_ANNOTATE (Targeted_MSM_... [ 40%] 2 of 5, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [  0%] 0 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/d1/a4e079b37a34700b8dac8270bb4fae/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_026_chr1_116421173_145228742.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/cc/9114cbb19f9944d05ac8dbcd13c8cb/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_027_chr1_145228743_149938613.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/b2/3c099cbb005d74b3d402c27a88f888/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/validation/Targeted_MSM_b001_048_chr1_248111529_248956422.vep.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/7a/3aa6d22edfefa8fc4b7794c58ea3e7/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (58)
+[da/1ee56e] process > NORM_QC (Targeted_MSM_b001_... [ 12%] 6 of 48
+[6c/39fcd1] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 2 of 7, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [  0%] 0 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/7a/3aa6d22edfefa8fc4b7794c58ea3e7/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf [copy] -- See log file for details
+
+
+
+
+executor >  lsf (59)
+[da/1ee56e] process > NORM_QC (Targeted_MSM_b001_... [ 12%] 6 of 48
+[ee/0417c8] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 2 of 7, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/7a/3aa6d22edfefa8fc4b7794c58ea3e7/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf [copy] -- See log file for details
+
+
+
+
+executor >  lsf (60)
+[da/1ee56e] process > NORM_QC (Targeted_MSM_b001_... [ 12%] 6 of 48
+[77/291a9c] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 2 of 7, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/7a/3aa6d22edfefa8fc4b7794c58ea3e7/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (60)
+[da/1ee56e] process > NORM_QC (Targeted_MSM_b001_... [ 12%] 6 of 48
+[77/291a9c] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 2 of 7, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/7a/3aa6d22edfefa8fc4b7794c58ea3e7/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/da/1ee56ea2e2921ff20093a9a3d272b0/Targeted_MSM_b001_020_chr1_66993976_77992078.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_020_chr1_66993976_77992078.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (60)
+[da/1ee56e] process > NORM_QC (Targeted_MSM_b001_... [ 12%] 6 of 48
+[77/291a9c] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 2 of 7, failed: 1...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/7a/3aa6d22edfefa8fc4b7794c58ea3e7/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_023_chr1_94927626_108867752.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/da/1ee56ea2e2921ff20093a9a3d272b0/Targeted_MSM_b001_020_chr1_66993976_77992078.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_020_chr1_66993976_77992078.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/ff/b0f52708d7fc3ecba2cab26880f871/Targeted_MSM_b001_019_chr1_58784632_66993975.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_019_chr1_58784632_66993975.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (60)
+[da/1ee56e] process > NORM_QC (Targeted_MSM_b001_... [ 12%] 6 of 48
+[ce/e04eda] process > VEP_ANNOTATE (Targeted_MSM_... [ 37%] 3 of 8, failed: 2...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/da/1ee56ea2e2921ff20093a9a3d272b0/Targeted_MSM_b001_020_chr1_66993976_77992078.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_020_chr1_66993976_77992078.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/ff/b0f52708d7fc3ecba2cab26880f871/Targeted_MSM_b001_019_chr1_58784632_66993975.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_019_chr1_58784632_66993975.norm.vcf [copy] -- See log file for details
+[ce/e04eda] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_027_chr1_145228743_149938613)` terminated with an error exit status (137) -- Execution is retried (1)
+
+
+executor >  lsf (61)
+[da/1ee56e] process > NORM_QC (Targeted_MSM_b001_... [ 12%] 6 of 48
+[a7/1814f9] process > VEP_ANNOTATE (Targeted_MSM_... [ 37%] 3 of 8, failed: 2...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/da/1ee56ea2e2921ff20093a9a3d272b0/Targeted_MSM_b001_020_chr1_66993976_77992078.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_020_chr1_66993976_77992078.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/ff/b0f52708d7fc3ecba2cab26880f871/Targeted_MSM_b001_019_chr1_58784632_66993975.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_019_chr1_58784632_66993975.norm.vcf [copy] -- See log file for details
+[ce/e04eda] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_027_chr1_145228743_149938613)` terminated with an error exit status (137) -- Execution is retried (1)
+
+
+executor >  lsf (61)
+[86/2c275c] process > NORM_QC (Targeted_MSM_b001_... [ 16%] 8 of 48
+[a7/1814f9] process > VEP_ANNOTATE (Targeted_MSM_... [ 30%] 3 of 10, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+[ce/e04eda] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_027_chr1_145228743_149938613)` terminated with an error exit status (137) -- Execution is retried (1)
+
+
+
+executor >  lsf (61)
+[86/2c275c] process > NORM_QC (Targeted_MSM_b001_... [ 16%] 8 of 48
+[a7/1814f9] process > VEP_ANNOTATE (Targeted_MSM_... [ 30%] 3 of 10, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+[ce/e04eda] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_027_chr1_145228743_149938613)` terminated with an error exit status (137) -- Execution is retried (1)
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/87/8ae8461890ed56c8437462d754a677/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf [copy] -- See log file for details
+
+
+executor >  lsf (62)
+[86/2c275c] process > NORM_QC (Targeted_MSM_b001_... [ 16%] 8 of 48
+[b3/0d4f00] process > VEP_ANNOTATE (Targeted_MSM_... [ 30%] 3 of 10, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+[ce/e04eda] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_027_chr1_145228743_149938613)` terminated with an error exit status (137) -- Execution is retried (1)
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/87/8ae8461890ed56c8437462d754a677/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/86/2c275cdd7df9ed7a014230218093f7/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (63)
+[86/2c275c] process > NORM_QC (Targeted_MSM_b001_... [ 16%] 8 of 48
+[30/e3c851] process > VEP_ANNOTATE (Targeted_MSM_... [ 30%] 3 of 10, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+[ce/e04eda] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_027_chr1_145228743_149938613)` terminated with an error exit status (137) -- Execution is retried (1)
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/87/8ae8461890ed56c8437462d754a677/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/86/2c275cdd7df9ed7a014230218093f7/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (63)
+[33/fa3ad4] process > NORM_QC (Targeted_MSM_b001_... [ 22%] 11 of 48
+[6c/39fcd1] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 4 of 14, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/87/8ae8461890ed56c8437462d754a677/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/86/2c275cdd7df9ed7a014230218093f7/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf [copy] -- See log file for details
+[6c/39fcd1] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_023_chr1_94927626_108867752)` terminated with an error exit status (130) -- Execution is retried (1)
+
+
+executor >  lsf (64)
+[33/fa3ad4] process > NORM_QC (Targeted_MSM_b001_... [ 22%] 11 of 48
+[a3/eba92a] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 4 of 14, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/87/8ae8461890ed56c8437462d754a677/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/86/2c275cdd7df9ed7a014230218093f7/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf [copy] -- See log file for details
+[6c/39fcd1] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_023_chr1_94927626_108867752)` terminated with an error exit status (130) -- Execution is retried (1)
+
+
+executor >  lsf (65)
+[33/fa3ad4] process > NORM_QC (Targeted_MSM_b001_... [ 22%] 11 of 48
+[69/ba27d6] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 4 of 14, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/87/8ae8461890ed56c8437462d754a677/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/86/2c275cdd7df9ed7a014230218093f7/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf [copy] -- See log file for details
+[6c/39fcd1] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_023_chr1_94927626_108867752)` terminated with an error exit status (130) -- Execution is retried (1)
+
+executor >  lsf (66)
+[33/fa3ad4] process > NORM_QC (Targeted_MSM_b001_... [ 22%] 11 of 48
+[82/77691b] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 4 of 14, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/87/8ae8461890ed56c8437462d754a677/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/86/2c275cdd7df9ed7a014230218093f7/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf [copy] -- See log file for details
+[6c/39fcd1] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_023_chr1_94927626_108867752)` terminated with an error exit status (130) -- Execution is retried (1)
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/a4/ea1f0d8167ea89a507dac83aa2e327/Targeted_MSM_b001_030_chr1_153787052_155246033.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_030_chr1_153787052_155246033.norm.vcf [copy] -- See log file for details
+
+executor >  lsf (67)
+[33/fa3ad4] process > NORM_QC (Targeted_MSM_b001_... [ 22%] 11 of 48
+[6c/538e09] process > VEP_ANNOTATE (Targeted_MSM_... [ 28%] 4 of 14, failed: ...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/87/8ae8461890ed56c8437462d754a677/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_046_chr1_234568024_241427393.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/86/2c275cdd7df9ed7a014230218093f7/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_005_chr1_9836401_11977861.norm.vcf [copy] -- See log file for details
+[6c/39fcd1] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_023_chr1_94927626_108867752)` terminated with an error exit status (130) -- Execution is retried (1)
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/a4/ea1f0d8167ea89a507dac83aa2e327/Targeted_MSM_b001_030_chr1_153787052_155246033.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_030_chr1_153787052_155246033.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/33/fa3ad4a9c97e2d86f9e18c58cb3019/Targeted_MSM_b001_002_chr1_1380575_2507030.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_002_chr1_1380575_2507030.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/c2/619b7c1f7951a854c89fb8079ec7e4/Targeted_MSM_b001_043_chr1_220052070_225800269.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_043_chr1_220052070_225800269.norm.vcf [copy] -- See log file for details
+WARN: Killing running tasks (47)
+
+
+executor >  lsf (67)
+[5a/aa7153] process > NORM_QC (Targeted_MSM_b001_... [100%] 11 of 11
+[6c/538e09] process > VEP_ANNOTATE (Targeted_MSM_... [100%] 4 of 4, failed: 3...
+[b2/3c099c] process > VALIDATE_CHUNK (Targeted_MS... [100%] 1 of 1
+[d4/6c98b3] process > CLINVAR_CLASSIFY (Targeted_... [100%] 1 of 1
+[60/3526c1] process > PER_GENE_QC (Targeted_MSM_b... [100%] 1 of 1
+[34/f28391] process > CARRIER_MATRIX (Targeted_MS... [100%] 1 of 1
+[-        ] process > CONCAT_CARRIER_MATRIX          -
+[eb/1f6bb9] process > MANIFEST                       [100%] 1 of 1 ✔
+[6c/39fcd1] NOTE: Process `VEP_ANNOTATE (Targeted_MSM_b001_023_chr1_94927626_108867752)` terminated with an error exit status (130) -- Execution is retried (1)
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/a4/ea1f0d8167ea89a507dac83aa2e327/Targeted_MSM_b001_030_chr1_153787052_155246033.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_030_chr1_153787052_155246033.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/33/fa3ad4a9c97e2d86f9e18c58cb3019/Targeted_MSM_b001_002_chr1_1380575_2507030.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_002_chr1_1380575_2507030.norm.vcf [copy] -- See log file for details
+WARN: Failed to publish file: /sc/arion/scratch/luj12/nf-germline-plp-carrier/c2/619b7c1f7951a854c89fb8079ec7e4/Targeted_MSM_b001_043_chr1_220052070_225800269.norm.vcf; to: /sc/arion/projects/rg_huangk06/variants_PLP_MSM/results-chr1/norm_qc/Targeted_MSM_b001_043_chr1_220052070_225800269.norm.vcf [copy] -- See log file for details
+
+
+
+
+
+PS:
+
+Read file <logs/chr1.257337580.err> for stderr output of this job.
+
