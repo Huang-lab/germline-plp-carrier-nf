@@ -109,7 +109,59 @@ tests/synthetic/run_clinvar_only_smoke.sh   # ClinVar only, chr21 fixture
 ```
 
 ## Real runs (Minerva)
-See `docs/RUNNING_ON_MINERVA.md`.
+See `docs/RUNNING_ON_MINERVA.md` for one-time setup (Nextflow via conda, proxy,
+containers, references).
+
+### Running a new batch
+Each cohort/batch is one params file + one LSF submission. Prepare these, then
+submit `run_batch.lsf`.
+
+**What you need to prepare (per batch):**
+1. **Input pVCFs** — a directory of raw, bgzipped, per-chunk VCFs
+   (`<dir>/*.vcf.gz`). No pre-processing needed; the pipeline normalizes, PASS-
+   filters, reconciles contigs (UCSC↔Ensembl), and DP/GQ-masks genotypes itself.
+   _Example (batch_002):_ `/sc/arion/projects/MSM/data/WES/new_rgn/batch_002/pVCF/*.vcf.gz`
+2. **References** — a `refs/` folder with the GRCh38 FASTA, VEP cache, and ClinVar
+   VCF. References are cohort-independent — reuse one shared copy or a per-batch
+   one. Expected layout:
+   ```
+   refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz  (+ .fai/.gzi)
+   refs/vep_cache/homo_sapiens/113_GRCh38/...
+   refs/clinvar/clinvar_<release>.vcf.gz                           (+ .tbi)
+   ```
+3. **Containers** — the three `.sif` files pulled once on a compute node
+   (`docs/RUNNING_ON_MINERVA.md` §5): ensembl-vep, bcftools, python.
+4. **Params file** — copy an existing one and repoint the paths. See
+   `params/msm.batch_002.yaml` for a complete example:
+   ```yaml
+   input_vcfs:      '/sc/arion/projects/MSM/data/WES/new_rgn/batch_002/pVCF/*.vcf.gz'
+   reference_fasta: '<batch>/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz'
+   outdir:          '<batch>/results'
+   vep_cache_dir:   '<batch>/refs/vep_cache'
+   vep_cache_version: 113
+   clinvar_vcf:     '<batch>/refs/clinvar/clinvar_20250715.vcf.gz'
+   clinvar_release: '20250715'
+   container_vep:      '/sc/arion/work/<user>/singularity_cache/ensembl-vep_release_113.0.sif'
+   container_bcftools: '/sc/arion/work/<user>/singularity_cache/bcftools_1.20.sif'
+   container_python:   '/sc/arion/work/<user>/singularity_cache/python_3.11-slim.sif'
+   ```
+
+**Submit** (fresh batch → dedicated work dir, no `-resume`):
+```bash
+cd germline-plp-carrier-nf && git checkout main && git pull   # latest code + params
+export MINERVA_ALLOCATION=acc_<project>
+export PARAMS_FILE=params/msm.batch_002.yaml
+mkdir -p logs
+bsub -P "$MINERVA_ALLOCATION" < run_batch.lsf
+```
+`run_batch.lsf` env knobs: `PARAMS_FILE` (required), `CLASSIFIERS` (default
+`clinvar`), `NXF_BATCH_WORK` (default `/sc/arion/scratch/$USER/nf-<params name>`),
+`RESUME=1` (only when re-running the SAME batch). **Pilot first** by adding
+`--input_vcfs "$(ls -Sr <pVCF dir>/*.vcf.gz | head -1)"` to process the smallest
+chunk end-to-end before the full submission.
+
+**ACMG:** produced separately by `acmg_fastvep/` after the run — it is **not**
+part of this Nextflow pipeline (see [ACMG-AMP via fastVEP](#acmg-amp-via-fastvep)).
 
 ## Outputs
 - `results/carriers/carrier_matrix.tsv` (long; optional wide pivot)

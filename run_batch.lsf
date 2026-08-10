@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#BSUB -J plp-batch
+#BSUB -q premium
+#BSUB -n 2
+#BSUB -R "rusage[mem=8000] span[hosts=1]"
+#BSUB -W 96:00
+#BSUB -oo logs/plp-batch.%J.out
+#BSUB -eo logs/plp-batch.%J.err
+#
+# Reusable per-batch driver for germline-plp-carrier-nf on Minerva.
+# Submit ONE of these (env vars are carried into the LSF job):
+#
+#   export MINERVA_ALLOCATION=acc_<project>
+#   export PARAMS_FILE=params/msm.batch_002.yaml
+#   mkdir -p logs
+#   bsub -P "$MINERVA_ALLOCATION" < run_batch.lsf
+#
+# Env knobs (all optional except PARAMS_FILE + MINERVA_ALLOCATION):
+#   PARAMS_FILE    cohort params yaml (e.g. params/msm.batch_002.yaml)   [required]
+#   CLASSIFIERS    subset of clinvar,acmg,am                             [default: clinvar]
+#   NXF_BATCH_WORK dedicated Nextflow work dir (keeps batches isolated)
+#                                        [default: /sc/arion/scratch/$USER/nf-<params basename>]
+#   RESUME         set to 1 to add -resume (only when re-running the SAME batch) [default: 0]
+set -euo pipefail
+
+: "${MINERVA_ALLOCATION:?export MINERVA_ALLOCATION=acc_<project> before submitting}"
+: "${PARAMS_FILE:?set PARAMS_FILE=params/<cohort>.yaml before submitting}"
+CLASSIFIERS="${CLASSIFIERS:-clinvar}"
+tag="$(basename "${PARAMS_FILE%.yaml}")"
+NXF_BATCH_WORK="${NXF_BATCH_WORK:-/sc/arion/scratch/$USER/nf-$tag}"
+
+# Nextflow is installed via conda (site module drifts) — see docs/RUNNING_ON_MINERVA.md
+ml java anaconda3 singularity-ce
+source activate nextflow
+
+# Proxy REQUIRED on Minerva (nf-core mssm doc): needed for LSF child submission.
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+
+# Do not phone home (nextflow.io unreachable from compute nodes → startup stall).
+export NXF_OFFLINE=true
+export NXF_DISABLE_CHECK_LATEST=true
+export SINGULARITY_CACHEDIR="/sc/arion/work/${USER}/singularity_cache"
+export SINGULARITY_TMPDIR="/sc/arion/work/${USER}/singularity_tmp"
+mkdir -p logs "$SINGULARITY_CACHEDIR" "$SINGULARITY_TMPDIR" "$NXF_BATCH_WORK"
+
+RESUME_ARG=""
+[ "${RESUME:-0}" = "1" ] && RESUME_ARG="-resume"
+
+echo "[run_batch] params=$PARAMS_FILE classifiers=$CLASSIFIERS work=$NXF_BATCH_WORK resume=${RESUME:-0}" >&2
+nextflow run . \
+    -profile minerva \
+    -params-file "$PARAMS_FILE" \
+    --classifiers "$CLASSIFIERS" \
+    -work-dir "$NXF_BATCH_WORK" \
+    $RESUME_ARG
