@@ -1,0 +1,18 @@
+cohort: msm_batch_002
+
+input_vcfs:      '/sc/arion/projects/MSM/data/WES/new_rgn/batch_002/pVCF/*.vcf.gz'
+reference_fasta: '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/batch_002/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa.bgz'
+outdir:          '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/batch_002/results'
+keep_samples:    null
+
+vep_cache_dir:      '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/batch_002/refs/vep_cache'
+vep_cache_version:  113
+clinvar_vcf:        '/sc/arion/projects/rg_huangk06/variants_PLP_MSM/batch_002/refs/clinvar/clinvar_20250715.vcf.gz'
+clinvar_release:    '20250715'
+
+container_vep:      '/sc/arion/work/luj12/singularity_cache/ensembl-vep_release_113.0.sif'
+container_bcftools: '/sc/arion/work/luj12/singularity_cache/bcftools_1.20.sif'
+container_python:   '/sc/arion/work/luj12/singularity_cache/python_3.11-slim.sif'
+
+clinvar_min_stars: 2
+min_symbol_fraction: 0.5
