@@ -36,11 +36,9 @@ grep -q '"ok": true' "${CHUNK}.validate.json"
     --min-strength PP3_Moderate \
     --out "${CHUNK}.am_plp.tsv"
 
-# ACMG_ANNOVAR_INTERVAR (fallback: synthetic intervar + placeholder multianno)
-"$ROOT/bin/synthetic_intervar.py" --in "${CHUNK}.vep.vcf" --out "${CHUNK}.hg38_multianno.txt.intervar"
-printf '#Chr\tStart\tEnd\tRef\tAlt\tFunc.refGene\tGene.refGene\n' > "${CHUNK}.hg38_multianno.txt"
-"$ROOT/bin/acmg_postprocess.py" --intervar "${CHUNK}.hg38_multianno.txt.intervar" --out "${CHUNK}.acmg_plp.tsv"
-test -s "${CHUNK}.hg38_multianno.txt" && test -s "${CHUNK}.hg38_multianno.txt.intervar" && echo "ACMG intermediates present"
+# ACMG_FASTVEP (fallback: synthetic ACMG stub — no fastvep / SA dbs in the test env)
+"$ROOT/bin/synthetic_acmg_fastvep.py" --in "${CHUNK}.vep.vcf" --out "${CHUNK}.acmg_plp.tsv"
+test -s "${CHUNK}.acmg_plp.tsv" && echo "ACMG (fastVEP stub) table present"
 
 # PER_GENE_QC (inlined python from modules/local/per_gene_qc.nf)
 python3 - <<PY

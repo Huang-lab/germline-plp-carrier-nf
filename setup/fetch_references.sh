@@ -11,7 +11,7 @@
 set -euo pipefail
 
 : "${RESOURCES_DIR:?Set RESOURCES_DIR to a writable dir on Minerva scratch/work}"
-: "${CLINVAR_RELEASE:?Set CLINVAR_RELEASE to a dated release, e.g. 20260401 — must match ANNOVAR humandb clinvar_<date>}"
+: "${CLINVAR_RELEASE:?Set CLINVAR_RELEASE to a dated release, e.g. 20260401}"
 : "${VEP_CACHE_VERSION:=113}"
 : "${GNOMAD_VERSION:=v4.1}"
 
@@ -44,7 +44,7 @@ reuse_or_download() {
     mv "$dest.part" "$dest"
 }
 
-# --- ClinVar (pinned date; MUST match ANNOVAR humandb clinvar_<date>) ---
+# --- ClinVar (pinned date) ---
 CV_BASE="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/archive_2.0/${CLINVAR_RELEASE:0:4}"
 reuse_or_download "$RESOURCES_DIR/clinvar/clinvar_${CLINVAR_RELEASE}.vcf.gz" \
     "$SHARED_REFS/clinvar/clinvar_${CLINVAR_RELEASE}.vcf.gz" \

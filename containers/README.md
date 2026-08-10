@@ -12,22 +12,12 @@ cd containers/
 singularity build annotate.sif annotate.def
 ```
 
-## `annovar_intervar.sif`
-ANNOVAR is registration-gated. You must obtain the tarball yourself from
-<https://annovar.openbioinformatics.org/> and stage it before the build:
-
-```bash
-cd containers/
-mkdir -p _staging
-cp /path/to/annovar.latest.tar.gz _staging/annovar.tar.gz
-singularity build annovar_intervar.sif annovar_intervar.def
-```
-
-The container ships tools only; the ANNOVAR `humandb` and InterVar `intervardb`
-data directories are **bind-mounted at runtime** via `params.annovar_humandb`
-and `params.intervar_dir`. Download them with
-`setup/setup_annovar_intervar.sh` after the image is built.
+## ACMG (fastVEP) — no container
+ACMG-AMP is produced by **fastVEP** (Huang-lab/fastVEP), a native Rust binary
+built once via `acmg_fastvep/setup_fastvep.sh` — there is no ACMG container. The
+`ACMG_FASTVEP` process runs the `fastvep` binary directly (on PATH), or in a
+container if you set `params.container_fastvep`. See `acmg_fastvep/README.md`.
 
 ## Do not push
-Both images bundle licensed / semi-licensed content. Keep them on
+`annotate.sif` bundles freely-licensed tooling but keep it on
 `/sc/arion/work/$USER/singularity_cache/` — do not push to a public registry.

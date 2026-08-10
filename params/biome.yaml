@@ -21,17 +21,16 @@ am_plugin_pm:       '/sc/arion/work/USER/germline-plp-refs/plugins/AlphaMissense
 am_calibration_tsv: '/sc/arion/projects/CHANGEME/refs/am_calibration_chen_pejaver_2026.tsv'
 loftee_data_dir:    '/sc/arion/work/USER/germline-plp-refs/loftee'
 
-# ANNOVAR/InterVar
-annovar_dir:     '/sc/arion/work/USER/germline-plp-refs/annovar'
-annovar_humandb: '/sc/arion/work/USER/germline-plp-refs/humandb'
-intervar_dir:    '/sc/arion/work/USER/germline-plp-refs/InterVar'
-intervar_config: '/sc/arion/work/USER/germline-plp-refs/InterVar/config.ini'
+# ACMG via fastVEP (only needed for --classifiers acmg; see acmg_fastvep/README.md)
+fastvep_bin:    'fastvep'
+fastvep_gff3:   '/sc/arion/work/USER/germline-plp-refs/fastvep/Homo_sapiens.GRCh38.115.gff3'
+fastvep_sa_dir: '/sc/arion/work/USER/germline-plp-refs/fastvep_sa'
 
 # Containers — see params/msm.yaml and docs/RUNNING_ON_MINERVA.md.
 container_vep:              '/sc/arion/work/USER/singularity_cache/ensembl-vep_release_113.0.sif'
 container_bcftools:         '/sc/arion/work/USER/singularity_cache/bcftools_1.20.sif'
 container_python:           '/sc/arion/work/USER/singularity_cache/python_3.11-slim.sif'
-container_annovar_intervar: null
+container_fastvep:          null
 
 # Thresholds
 min_dp: 10

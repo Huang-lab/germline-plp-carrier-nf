@@ -70,7 +70,7 @@ def main() -> int:
             alt = parts[4]
             info = parts[7]
             syn = ""
-            new_kvs = list(info.split(";"))  # keep SYN so downstream fixtures (synthetic_intervar) can read the ACMG label
+            new_kvs = list(info.split(";"))  # keep SYN so downstream fixtures (synthetic_acmg_fastvep) can read the ACMG label
             for kv in info.split(";"):
                 if kv.startswith("SYN="):
                     syn = kv[4:]

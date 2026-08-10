@@ -35,10 +35,12 @@ export VEP_CACHE_VERSION=113
 export GNOMAD_VERSION=v4.1
 
 setup/fetch_references.sh          # reuses SHARED_REFS/* when present
-
-export ANNOVAR_TARBALL=/path/to/your/annovar.latest.tar.gz
-setup/setup_annovar_intervar.sh    # SAME CLINVAR_RELEASE — critical
 ```
+
+**ACMG (`--classifiers acmg`) uses fastVEP, not ANNOVAR/InterVar.** Set it up
+separately (native binary + supplementary DBs) per `acmg_fastvep/README.md`
+(`acmg_fastvep/setup_fastvep.sh`), then set `params.fastvep_gff3` +
+`params.fastvep_sa_dir`. Not needed for ClinVar-only or AlphaMissense-only runs.
 
 Then supply the AlphaMissense gene-specific calibration TSV (Chen/Pejaver
 2026) yourself and set `params.am_calibration_tsv` to its path in
@@ -78,9 +80,8 @@ Referencing local `.sif` files (not `docker://` URLs) means Nextflow reuses the
 images directly — no re-pull, no cache-name mismatch, works offline.
 
 Process→image map: NORM_QC→bcftools, VEP_ANNOTATE→vep, everything else→python.
-
-**ACMG only:** also build/supply `container_annovar_intervar`. Not needed for
-ClinVar-only or AlphaMissense-only runs.
+ACMG_FASTVEP runs the native `fastvep` binary (no container) unless you set
+`params.container_fastvep`.
 
 ## 6. Verify the gnomAD popmax field name
 Confirm the popmax AF field name in the real gnomAD v4 VCF header on Minerva:
@@ -93,7 +94,7 @@ Adjust `params.gnomad_popmax_field` if the field is named differently in the
 release you use.
 
 ## 6a. (Optional) Run a single classifier
-To validate the ClinVar-only path first (fastest; needs no ANNOVAR or
+To validate the ClinVar-only path first (fastest; needs no fastVEP or
 AlphaMissense data):
 
 ```bash

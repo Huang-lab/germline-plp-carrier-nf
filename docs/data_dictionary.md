@@ -15,7 +15,7 @@ contains only the site-native ID. This pipeline does not link to phenotypes.
 | `GT`            | str    | Raw genotype as called (e.g. `0/1`, `1/1`, `1`). |
 | `zygosity`      | str    | Derived from `GT`: `het` / `hom_alt` / `hemizygous` (haploid call, or single allele on chrX/Y). |
 | `is_clinvar_PLP`| 0/1    | 1 iff variant is P/LP per ClinVar with review-status ≥ `params.clinvar_min_stars`. |
-| `is_acmg_PLP`   | 0/1    | 1 iff InterVar assigns Pathogenic or Likely pathogenic. |
+| `is_acmg_PLP`   | 0/1    | 1 iff fastVEP's ACMG-AMP call is Pathogenic or Likely pathogenic. |
 | `is_AM_PLP`     | 0/1    | 1 iff AlphaMissense score meets the gene-specific threshold at `params.am_min_strength`. |
 
 Rows exist only for carriers (at least one alt allele in the person's genotype)
@@ -39,17 +39,18 @@ of a variant that is P/LP under any framework, else 0.
 | `is_clinvar_PLP` | 0/1. Requires P/LP CLNSIG, review-status ≥ `params.clinvar_min_stars`, and no benign co-classification. Conflicting calls are excluded (1 star). |
 
 ## `results/variants/acmg_plp.tsv`
+Produced by **fastVEP** (Huang-lab/fastVEP) via its native `--acmg`
+(Richards 2015 + ClinGen SVI), parsed by `acmg_fastvep/parse_fastvep_acmg.py`.
+Per variant the most severe call across transcripts is kept (P > LP > VUS > LB > B).
+
 | column | description |
 |--------|-------------|
 | `chr`, `pos`, `ref`, `alt`, `gene` | as above |
-| `acmg_label` | InterVar 2015 ACMG/AMP label: `Pathogenic` / `Likely pathogenic` / `Uncertain significance` / `Likely benign` / `Benign`. |
-| `acmg_criteria` | `;`-joined triggered ACMG codes, e.g. `PVS1;PM2;PP3` (parsed comprehensively from InterVar's evidence vector; array lengths read from data, robust to InterVar version). |
+| `acmg_label` | fastVEP ACMG-AMP label: `Pathogenic` / `Likely_pathogenic` / `Uncertain_significance` / `Likely_benign` / `Benign`. |
+| `acmg_criteria` | `;`-joined triggered ACMG codes, e.g. `PVS1;PM2_Supporting;PP3` (from fastVEP's `ACMG_CRITERIA` CSQ subfield). |
 | `n_pathogenic_criteria` | Count of triggered pathogenic codes (PVS/PS/PM/PP). |
 | `n_benign_criteria` | Count of triggered benign codes (BA/BS/BP). |
-| `is_acmg_PLP` | 0/1 (InterVar's own label; optionally demoted when the stand-alone benign BA1 fired, via `acmg_postprocess.py --demote-on-ba1`). |
-
-Raw ANNOVAR/InterVar intermediates are published under
-`results/annovar_intervar/` (see below).
+| `is_acmg_PLP` | 0/1 — 1 iff `acmg_label` is Pathogenic or Likely_pathogenic. |
 
 ## `results/variants/am_plp.tsv`
 | column | description |
@@ -59,14 +60,12 @@ Raw ANNOVAR/InterVar intermediates are published under
 | `min_strength` | Configured minimum PP3 evidence tier (`PP3_Supporting` / `PP3_Moderate` / `PP3_Strong` / `PP3_VeryStrong`). |
 | `is_AM_PLP` | 0/1. |
 
-## `results/annovar_intervar/` (ACMG intermediates)
-Published only when the `acmg` classifier runs. Per chunk:
-- `<chunk>.hg38_multianno.txt` — ANNOVAR `table_annovar.pl` multi-annotation
-  output (refGene, clinvar, gnomAD, dbNSFP, avsnp).
-- `<chunk>*.intervar` — raw InterVar classification (the ACMG evidence-code
-  breakdown that `acmg_plp.tsv` is post-processed from).
-These are provenance/debugging artifacts; the analysis-ready call is
-`variants/acmg_plp.tsv`.
+## ACMG intermediates
+The `acmg` classifier (fastVEP) writes a full annotated VCF
+(`<chunk>.fastvep.vcf`, CSQ incl. `ACMG`/`ACMG_CRITERIA`) in the task work dir as
+an intermediate; only the analysis-ready `variants/acmg_plp.tsv` is published. To
+keep the full fastVEP VCF, run the standalone `acmg_fastvep/` tool (which retains
+it) — see `acmg_fastvep/README.md`.
 
 ## `results/variants/qc_per_gene.tsv`
 | column | description |

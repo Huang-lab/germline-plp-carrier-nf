@@ -4,7 +4,7 @@
 Inputs:
   --gt        bcftools query TSV: chr\tpos\tref\talt\tsample\tGT (one row per sample-variant carrying alt)
   --clinvar   classify_clinvar output TSV
-  --acmg      acmg_postprocess output TSV
+  --acmg      fastVEP ACMG output TSV (acmg_fastvep/parse_fastvep_acmg.py)
   --am        classify_alphamissense output TSV
   --keep      sample keep-list, one ID per line (optional)
   --out-long  long-format output TSV (chr,pos,ref,alt,gene,person_id,GT,zygosity,

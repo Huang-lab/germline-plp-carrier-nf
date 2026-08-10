@@ -37,9 +37,16 @@ def test_required_csq_for_am_only():
     assert "ClinVar_CLNSIG" not in req
 
 
+def test_acmg_imposes_no_csq_requirement():
+    # ACMG is produced by fastVEP, which re-annotates independently — it must
+    # not force any CSQ subfield onto the pipeline's annotated VCF.
+    assert required_csq_for(("acmg",)) == ()
+
+
 def test_required_csq_union_ordering_stable():
     req = required_csq_for(("clinvar", "acmg", "am"))
     assert req.index("SYMBOL") == 0
-    assert "gnomAD_AF" in req
     assert "am_pathogenicity" in req
     assert "ClinVar_CLNSIG" in req
+    # acmg (fastVEP) contributes nothing to the union
+    assert "gnomAD_AF" not in req

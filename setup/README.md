@@ -17,39 +17,29 @@ It writes `$RESOURCES_DIR/versions.txt` for the run manifest.
 ### Required env
 ```bash
 export RESOURCES_DIR=/sc/arion/work/$USER/germline-plp-refs
-export CLINVAR_RELEASE=20260401   # pick a dated release; MUST match ANNOVAR humandb below
+export CLINVAR_RELEASE=20260401   # pick a dated release (recorded in the manifest)
 export VEP_CACHE_VERSION=113
 export GNOMAD_VERSION=v4.1
 export SHARED_REFS=/sc/arion/projects/YOUR_PROJECT/refs   # optional; reuses existing lab paths
 setup/fetch_references.sh
 ```
 
-## `setup_annovar_intervar.sh` (license-gated)
-ANNOVAR is registration-gated. You must obtain the tarball yourself and pass
-its path via `$ANNOVAR_TARBALL`. The script fails clearly if the tarball is
-missing — it **never fetches ANNOVAR**.
-
-InterVar is freely available (MIT) and cloned by the script. The humandb DBs
-InterVar needs are then downloaded via `annotate_variation.pl -downdb -webfrom annovar`.
-
-### ClinVar-date pinning (critical)
-The `clinvar_<date>` humandb version installed here MUST match the ClinVar VCF
-release fetched by `fetch_references.sh` — pass the same `$CLINVAR_RELEASE`.
-Otherwise the VEP `--custom` ClinVar track (used by ClinVar classifier) and the
-ANNOVAR/InterVar ACMG track will disagree.
-
+## ACMG via fastVEP (`--classifiers acmg`)
+ACMG-AMP is produced by **fastVEP** (Huang-lab/fastVEP), not ANNOVAR/InterVar.
+Setup is separate and documented in `acmg_fastvep/README.md`:
 ```bash
-export ANNOVAR_TARBALL=/path/to/annovar.latest.tar.gz
-export RESOURCES_DIR=/sc/arion/work/$USER/germline-plp-refs
-export CLINVAR_RELEASE=20260401   # SAME as above
-setup/setup_annovar_intervar.sh
+acmg_fastvep/setup_fastvep.sh --refdir /sc/arion/work/$USER/germline-plp-refs/fastvep \
+    --fasta <the same GRCh38 FASTA used above>
 ```
+Then build the supplementary databases (gnomAD/ClinVar/REVEL/gene-level) per
+fastVEP `docs/ACMG_SETUP.md`, and set `params.fastvep_gff3` + `params.fastvep_sa_dir`
+(and optionally `params.fastvep_bin` / `params.container_fastvep`). For
+consistency, build the ClinVar SA DB from the SAME `$CLINVAR_RELEASE` used above.
 
 ### User-supplied (not downloaded)
 - **AlphaMissense gene-specific calibration table** (Chen/Pejaver 2026): supply
   the TSV yourself and set `params.am_calibration_tsv` to its path.
-- **ANNOVAR tarball**: as above.
 
 ## After setup
 Edit `params/msm.yaml` or `params/biome.yaml` to point at the paths under
-`$RESOURCES_DIR/` (and your two `.sif` images built per `containers/README.md`).
+`$RESOURCES_DIR/` (and your `.sif` images pulled per `docs/RUNNING_ON_MINERVA.md`).

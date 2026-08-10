@@ -6,7 +6,7 @@ include { VEP_ANNOTATE }           from './modules/local/vep_annotate.nf'
 include { VALIDATE_CHUNK }         from './modules/local/validate_chunk.nf'
 include { CLINVAR_CLASSIFY }       from './modules/local/clinvar_classify.nf'
 include { ALPHAMISSENSE_CLASSIFY } from './modules/local/alphamissense_classify.nf'
-include { ACMG_ANNOVAR_INTERVAR }  from './modules/local/acmg_annovar_intervar.nf'
+include { ACMG_FASTVEP }           from './modules/local/acmg_fastvep.nf'
 include { PER_GENE_QC }            from './modules/local/per_gene_qc.nf'
 include { CARRIER_GT }             from './modules/local/carrier_gt.nf'
 include { CARRIER_MATRIX }         from './modules/local/carrier_matrix.nf'
@@ -115,12 +115,11 @@ workflow {
         ? ALPHAMISSENSE_CLASSIFY(VALIDATE_CHUNK.out.vcf, optionalFile(params.am_calibration_tsv, 'am_calibration_tsv')).tsv
         : emptyPerChunk('am_plp')
     def acmg_tsv_ch = classifiers.contains('acmg')
-        ? ACMG_ANNOVAR_INTERVAR(
+        ? ACMG_FASTVEP(
               VALIDATE_CHUNK.out.vcf,
-              optionalFile(params.annovar_dir, 'annovar_dir'),
-              optionalFile(params.annovar_humandb, 'annovar_humandb'),
-              optionalFile(params.intervar_dir, 'intervar_dir'),
-              optionalFile(params.intervar_config, 'intervar_config'),
+              optionalFile(params.fastvep_gff3, 'fastvep_gff3'),
+              file(params.reference_fasta),
+              optionalFile(params.fastvep_sa_dir, 'fastvep_sa_dir'),
           ).tsv
         : emptyPerChunk('acmg_plp')
 

@@ -41,7 +41,10 @@ class ValidateParams:
 # validate_chunk enforces.
 CLASSIFIER_CSQ_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "clinvar": ("SYMBOL", "Consequence", "ClinVar_CLNSIG", "ClinVar_CLNREVSTAT"),
-    "acmg":    ("SYMBOL", "Consequence", "gnomAD_AF", "gnomAD_AF_grpmax"),
+    # 'acmg' is produced by fastVEP (Huang-lab/fastVEP), which re-annotates
+    # independently — it needs nothing from the pipeline's VEP CSQ, so it
+    # imposes no CSQ requirement on the annotated VCF.
+    "acmg":    (),
     "am":      ("SYMBOL", "Consequence", "am_pathogenicity"),
 }
 VALID_CLASSIFIERS = ("clinvar", "acmg", "am")
