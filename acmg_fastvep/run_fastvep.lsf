@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#BSUB -J fv-acmg
+#BSUB -q premium
+#BSUB -n 8
+#BSUB -R "rusage[mem=32000] span[hosts=1]"
+#BSUB -W 12:00
+#BSUB -oo logs/fv-acmg.%J.out
+#BSUB -eo logs/fv-acmg.%J.err
+#
+# Standalone fastVEP over a directory of QC'd VCFs (annotation or ACMG).
+# Runs the batch driver LOCALLY inside this one multi-core job (controlled env;
+# native fastvep binary + system python3). fastVEP is NOT containerized.
+#
+# Submit from the repo root on a Minerva LOGIN node:
+#   export MINERVA_ALLOCATION=acc_<project>
+#   export FV_IN=<norm_qc dir>           # dir of *.norm.vcf.gz
+#   export FV_OUT=/sc/arion/scratch/$USER/fastvep-out   # big .fastvep.vcf → use scratch
+#   export FV_ROOT=/sc/arion/projects/.../data/fastvep  # has bin/ gff3/ fasta/ sa_db/
+#   export FV_MODE=acmg                  # or 'annotate'
+#   mkdir -p logs
+#   bsub -P "$MINERVA_ALLOCATION" < acmg_fastvep/run_fastvep.lsf
+#
+# Optional overrides: FV_BIN, FV_GFF3, FV_FASTA, FV_SA (else derived from FV_ROOT).
+set -euo pipefail
+
+: "${FV_IN:?set FV_IN=<dir of *.norm.vcf.gz>}"
+: "${FV_OUT:?set FV_OUT=<output dir, e.g. /sc/arion/scratch/\$USER/fastvep-out>}"
+: "${FV_ROOT:?set FV_ROOT=<fastvep tool root with bin/ gff3/ fasta/ sa_db/>}"
+FV_MODE="${FV_MODE:-acmg}"
+FV_BIN="${FV_BIN:-$FV_ROOT/bin/fastvep}"
+FV_GFF3="${FV_GFF3:-$(ls "$FV_ROOT"/gff3/*.gff3 | head -1)}"
+FV_FASTA="${FV_FASTA:-$(ls "$FV_ROOT"/fasta/*.fa | head -1)}"
+FV_SA="${FV_SA:-$FV_ROOT/sa_db}"
+
+HERE="$(cd "$(dirname "$0")" && pwd)"     # acmg_fastvep/
+mkdir -p "$FV_OUT"
+
+args=(--in-dir "$FV_IN" -o "$FV_OUT" --gff3 "$FV_GFF3" --fasta "$FV_FASTA" --hgvs \
+      --fastvep "$FV_BIN" --threads 8)
+if [ "$FV_MODE" = "acmg" ]; then
+    args+=(--acmg --sa-dir "$FV_SA")
+fi
+
+echo "[run_fastvep.lsf] mode=$FV_MODE" >&2
+echo "  bin=$FV_BIN" >&2
+echo "  gff3=$FV_GFF3" >&2
+echo "  fasta=$FV_FASTA" >&2
+echo "  sa=$FV_SA  in=$FV_IN  out=$FV_OUT" >&2
+"$HERE/run_fastvep_batch.sh" "${args[@]}"
