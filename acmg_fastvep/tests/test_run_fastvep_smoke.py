@@ -36,9 +36,10 @@ def test_run_fastvep_plain(tmp_path):
         capture_output=True, text=True,
     )
     assert r.returncode == 0, f"run_fastvep.sh failed:\nSTDOUT:{r.stdout}\nSTDERR:{r.stderr}"
-    vcf = out / "test.fastvep.vcf"
+    import gzip
+    vcf = out / "test.fastvep.vcf.gz"
     assert vcf.is_file(), f"expected {vcf}; dir={list(out.iterdir()) if out.exists() else 'MISSING'}"
-    text = vcf.read_text()
+    text = gzip.open(vcf, "rt", encoding="utf-8").read()
     assert "##INFO=<ID=CSQ," in text, "no CSQ header in fastVEP output"
     # at least one non-comment record carries a CSQ= annotation
     assert any(("CSQ=" in ln) for ln in text.splitlines() if not ln.startswith("#")), \

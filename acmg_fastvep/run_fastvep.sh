@@ -82,10 +82,14 @@ fi
 mkdir -p "$OUTDIR"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 name="$(basename "$IN")"; name="${name%.gz}"; name="${name%.vcf}"; name="${name%.norm}"
-VEPOUT="$OUTDIR/${name}.fastvep.vcf"
+# Write the annotated VCF gzip-compressed. fastVEP streams to stdout (--output -)
+# and we gzip on the fly, so the large uncompressed VCF NEVER lands on disk —
+# keeps peak disk low and makes writing into space-tight result dirs safe.
+# The parser reads .gz transparently.
+VEPOUT="$OUTDIR/${name}.fastvep.vcf.gz"
 
 # --- build the annotate command ---
-cmd=("$FASTVEP" annotate --input "$IN" --output "$VEPOUT" --gff3 "$GFF3" --output-format vcf)
+cmd=("$FASTVEP" annotate --input "$IN" --output - --gff3 "$GFF3" --output-format vcf)
 [ -n "$FASTA" ]      && cmd+=(--fasta "$FASTA")
 [ "$DO_HGVS" = 1 ]   && cmd+=(--hgvs)
 [ "$DO_PICK" = 1 ]   && cmd+=(--pick)
@@ -94,8 +98,8 @@ if [ "$DO_ACMG" = 1 ]; then
     [ -n "$ACMG_CONFIG" ] && cmd+=(--acmg-config "$ACMG_CONFIG")
 fi
 
-echo "[fastvep] ${cmd[*]}" >&2
-"${cmd[@]}"
+echo "[fastvep] ${cmd[*]} | gzip > $VEPOUT" >&2
+"${cmd[@]}" | gzip -c > "$VEPOUT"
 
 # --- ACMG post-parse (only in --acmg mode) ---
 if [ "$DO_ACMG" = 1 ]; then
