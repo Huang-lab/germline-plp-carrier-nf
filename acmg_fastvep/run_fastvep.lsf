@@ -32,7 +32,15 @@ FV_GFF3="${FV_GFF3:-$(ls "$FV_ROOT"/gff3/*.gff3 | head -1)}"
 FV_FASTA="${FV_FASTA:-$(ls "$FV_ROOT"/fasta/*.fa | head -1)}"
 FV_SA="${FV_SA:-$FV_ROOT/sa_db}"
 
-HERE="$(cd "$(dirname "$0")" && pwd)"     # acmg_fastvep/
+# Locate run_fastvep_batch.sh robustly. When submitted via `bsub < run_fastvep.lsf`
+# the script is read from stdin, so $0 is an LSF spool path and dirname $0 is
+# useless — fall back to the submission dir (LSB_SUBCWD) / cwd, where the repo is.
+HERE=""
+for cand in "$(cd "$(dirname "$0")" 2>/dev/null && pwd)" \
+            "${LSB_SUBCWD:-$PWD}/acmg_fastvep" "$PWD/acmg_fastvep" "${FV_REPO:-}/acmg_fastvep"; do
+    [ -n "$cand" ] && [ -f "$cand/run_fastvep_batch.sh" ] && { HERE="$cand"; break; }
+done
+[ -n "$HERE" ] || { echo "ERROR: cannot find run_fastvep_batch.sh — submit from the repo root, or set FV_REPO=<repo path>" >&2; exit 3; }
 mkdir -p "$FV_OUT"
 
 args=(--in-dir "$FV_IN" -o "$FV_OUT" --gff3 "$FV_GFF3" --fasta "$FV_FASTA" --hgvs \
