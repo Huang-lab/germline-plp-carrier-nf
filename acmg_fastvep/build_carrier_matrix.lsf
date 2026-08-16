@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+#BSUB -J cm-combine
+#BSUB -q premium
+#BSUB -n 2
+#BSUB -R "rusage[mem=16000] span[hosts=1]"
+#BSUB -W 12:00
+#BSUB -oo logs/cm-combine.%J.out
+#BSUB -eo logs/cm-combine.%J.err
+#
+# Combine ClinVar + fastVEP-ACMG classifications with genotypes into ONE
+# carrier matrix for a chromosome (no VEP/fastVEP recompute). GT extraction
+# streams every QC'd VCF, so run it here — not on a login node.
+#
+# Submit from the repo root:
+#   export MINERVA_ALLOCATION=acc_<project>
+#   export CM_NORM=<results-chrN/norm_qc>
+#   export CM_CLINVAR=<results-chrN/variants>
+#   export CM_ACMG=<results-fastvep-chrN>
+#   export CM_OUT=<out.tsv>
+#   mkdir -p logs
+#   bsub -P "$MINERVA_ALLOCATION" < acmg_fastvep/build_carrier_matrix.lsf
+#
+# Optional: CM_KEEP (sample keep-list), FV_REPO (repo path, if cwd isn't it).
+set -euo pipefail
+
+: "${CM_NORM:?set CM_NORM=<norm_qc dir>}"
+: "${CM_OUT:?set CM_OUT=<output carrier_matrix tsv>}"
+CM_CLINVAR="${CM_CLINVAR:-}"
+CM_ACMG="${CM_ACMG:-}"
+CM_KEEP="${CM_KEEP:-}"
+
+# bcftools is what makes GT extraction fast; load it if the site provides modules.
+command -v bcftools >/dev/null 2>&1 || ml bcftools 2>/dev/null || true
+command -v bcftools >/dev/null 2>&1 || echo "WARN: bcftools not on PATH — slow python fallback" >&2
+
+# Locate the helper: under `bsub < file` $0 is an LSF spool path, so fall back
+# to the submission dir / cwd / $FV_REPO.
+HERE=""
+for cand in "$(cd "$(dirname "$0")" 2>/dev/null && pwd)" \
+            "${LSB_SUBCWD:-$PWD}/acmg_fastvep" "$PWD/acmg_fastvep" "${FV_REPO:-}/acmg_fastvep"; do
+    [ -n "$cand" ] && [ -f "$cand/build_carrier_matrix.sh" ] && { HERE="$cand"; break; }
+done
+[ -n "$HERE" ] || { echo "ERROR: cannot find build_carrier_matrix.sh — submit from the repo root or set FV_REPO" >&2; exit 3; }
+
+"$HERE/build_carrier_matrix.sh" \
+    --norm-dir "$CM_NORM" \
+    ${CM_CLINVAR:+--clinvar-dir "$CM_CLINVAR"} \
+    ${CM_ACMG:+--acmg-dir "$CM_ACMG"} \
+    ${CM_KEEP:+--keep "$CM_KEEP"} \
+    -o "$CM_OUT"

@@ -101,8 +101,17 @@ shopt -u nullglob
 
 if [ -s "$WORK/qual.pos.txt" ]; then
     have_bcf=0; command -v "$BCF" >/dev/null 2>&1 && have_bcf=1
+    if [ "$have_bcf" = 1 ]; then
+        echo "[carrier] GT extraction via bcftools (C speed): ${#vcfs[@]} VCF(s)" >&2
+    else
+        echo "[carrier] WARNING: '$BCF' not found — using the pure-Python fallback," >&2
+        echo "          which is 10-50x slower. Load bcftools (ml bcftools) for real data." >&2
+    fi
+    n=0
     for vcf in "${vcfs[@]}"; do
         [ -s "$vcf" ] || continue
+        n=$((n+1))
+        echo "[gt] ($n/${#vcfs[@]}) $(basename "$vcf")" >&2
         if [ "$have_bcf" = 1 ]; then
             "$BCF" query -T "$WORK/qual.pos.txt" \
                 -f '%CHROM\t%POS\t%REF\t%ALT[\t%SAMPLE=%GT]\n' "$vcf" \
