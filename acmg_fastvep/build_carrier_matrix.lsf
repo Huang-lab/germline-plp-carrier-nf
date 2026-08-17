@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #BSUB -J cm-combine
 #BSUB -q premium
-#BSUB -n 2
+#BSUB -n 8
 #BSUB -R "rusage[mem=16000] span[hosts=1]"
 #BSUB -W 12:00
 #BSUB -oo logs/cm-combine.%J.out
@@ -47,4 +47,5 @@ done
     ${CM_CLINVAR:+--clinvar-dir "$CM_CLINVAR"} \
     ${CM_ACMG:+--acmg-dir "$CM_ACMG"} \
     ${CM_KEEP:+--keep "$CM_KEEP"} \
+    --jobs "${CM_JOBS:-8}" \
     -o "$CM_OUT"

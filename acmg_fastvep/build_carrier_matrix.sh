@@ -32,13 +32,15 @@ Options:
   --keep <file>        sample keep-list (one ID per line)
   --bcftools <bin>     bcftools binary (default: bcftools on PATH; else python fallback)
   --out-wide <file>    also write a wide pivot
+  -j, --jobs <N>       parallel per-chunk GT extractions (default 4; set to the
+                       number of cores the job reserves)
 U
     exit 2
 }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
-NORM=""; OUT=""; CVDIR=""; ACDIR=""; KEEP=""; BCF="bcftools"; WIDE=""
+NORM=""; OUT=""; CVDIR=""; ACDIR=""; KEEP=""; BCF="bcftools"; WIDE=""; JOBS="${JOBS:-4}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --norm-dir)     NORM="$2"; shift 2 ;;
@@ -48,6 +50,7 @@ while [ $# -gt 0 ]; do
         --keep)         KEEP="$2"; shift 2 ;;
         --bcftools)     BCF="$2"; shift 2 ;;
         --out-wide)     WIDE="$2"; shift 2 ;;
+        -j|--jobs)      JOBS="$2"; shift 2 ;;
         -h|--help)      usage ;;
         *) echo "Unknown arg: $1" >&2; usage ;;
     esac
@@ -107,21 +110,30 @@ if [ -s "$WORK/qual.pos.txt" ]; then
         echo "[carrier] WARNING: '$BCF' not found — using the pure-Python fallback," >&2
         echo "          which is 10-50x slower. Load bcftools (ml bcftools) for real data." >&2
     fi
-    n=0
-    for vcf in "${vcfs[@]}"; do
-        [ -s "$vcf" ] || continue
-        n=$((n+1))
-        echo "[gt] ($n/${#vcfs[@]}) $(basename "$vcf")" >&2
-        if [ "$have_bcf" = 1 ]; then
-            "$BCF" query -T "$WORK/qual.pos.txt" \
-                -f '%CHROM\t%POS\t%REF\t%ALT[\t%SAMPLE=%GT]\n' "$vcf" \
-              | awk -F'\t' 'BEGIN{OFS="\t"}{for(i=5;i<=NF;i++){split($i,kv,"=");print $1,$2,$3,$4,kv[1],kv[2]}}' \
-              >> "$WORK/gt.tsv"
-        else
-            python3 "$REPO/bin/fixture_gt_extract.py" --vcf "$vcf" --positions "$WORK/qual.pos.txt" --out "$WORK/gt.chunk"
-            cat "$WORK/gt.chunk" >> "$WORK/gt.tsv"
-        fi
-    done
+    # Per-chunk extraction runs in PARALLEL (each chunk is an independent full
+    # scan of its own VCF) — the dominant cost. Each writes its own part file;
+    # order is irrelevant since build_carrier_matrix.py aggregates.
+    mkdir -p "$WORK/parts"
+    cat > "$WORK/extract_one.sh" <<EXTRACT
+#!/usr/bin/env bash
+set -euo pipefail
+vcf="\$1"
+part="$WORK/parts/\$(basename "\$vcf").gt"
+if [ "$have_bcf" = 1 ]; then
+    "$BCF" query -T "$WORK/qual.pos.txt" \\
+        -f '%CHROM\\t%POS\\t%REF\\t%ALT[\\t%SAMPLE=%GT]\\n' "\$vcf" \\
+      | awk -F'\\t' 'BEGIN{OFS="\\t"}{for(i=5;i<=NF;i++){split(\$i,kv,"=");print \$1,\$2,\$3,\$4,kv[1],kv[2]}}' \\
+      > "\$part"
+else
+    python3 "$REPO/bin/fixture_gt_extract.py" --vcf "\$vcf" --positions "$WORK/qual.pos.txt" --out "\$part"
+fi
+echo "[gt] done \$(basename "\$vcf")" >&2
+EXTRACT
+    chmod +x "$WORK/extract_one.sh"
+
+    echo "[carrier] extracting ${#vcfs[@]} chunk(s) with ${JOBS} parallel worker(s)" >&2
+    printf '%s\n' "${vcfs[@]}" | xargs -r -P "$JOBS" -I{} "$WORK/extract_one.sh" {}
+    cat "$WORK"/parts/*.gt >> "$WORK/gt.tsv" 2>/dev/null || true
 fi
 
 python3 "$REPO/bin/build_carrier_matrix.py" \
