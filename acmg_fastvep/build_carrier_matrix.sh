@@ -34,6 +34,8 @@ Options:
   --out-wide <file>    also write a wide pivot
   -j, --jobs <N>       parallel per-chunk GT extractions (default 4; set to the
                        number of cores the job reserves)
+  --allow-partial      proceed even when a chunk has no classifier TSV (default:
+                       refuse — a missing chunk silently under-counts carriers)
 U
     exit 2
 }
@@ -41,6 +43,7 @@ U
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 NORM=""; OUT=""; CVDIR=""; ACDIR=""; KEEP=""; BCF="bcftools"; WIDE=""; JOBS="${JOBS:-4}"
+ALLOW_PARTIAL=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --norm-dir)     NORM="$2"; shift 2 ;;
@@ -51,6 +54,7 @@ while [ $# -gt 0 ]; do
         --bcftools)     BCF="$2"; shift 2 ;;
         --out-wide)     WIDE="$2"; shift 2 ;;
         -j|--jobs)      JOBS="$2"; shift 2 ;;
+        --allow-partial) ALLOW_PARTIAL=1; shift ;;
         -h|--help)      usage ;;
         *) echo "Unknown arg: $1" >&2; usage ;;
     esac
@@ -62,22 +66,82 @@ done
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$(dirname "$OUT")"
 
-# concat per-chunk TSVs into one, keeping a single header
+# concat per-chunk TSVs into one, keeping a single header.
+#
+# Writes the number of chunks it consumed to $CONCAT_N so the caller can check
+# it against the chunk count. Without that check this function is the standalone
+# path's version of the batch3 dropped-chunk incident: the Nextflow pipeline
+# joins classifier TSVs to their VCF on chunk_id, so a missing chunk cannot go
+# unnoticed there, whereas here a glob over whatever happens to be on disk
+# produces a well-formed table over a quietly smaller cohort.
+CONCAT_N=0
 concat() {   # dir  glob  out
-    local dir="$1" g="$2" out="$3" first=1
+    local dir="$1" g="$2" out="$3" first=1 hdr="" this_hdr=""
+    CONCAT_N=0
     : > "$out"
     shopt -s nullglob
     for f in "$dir"/$g; do
         [ -s "$f" ] || continue
-        if [ "$first" = 1 ]; then cat "$f" >> "$out"; first=0; else tail -n +2 "$f" >> "$out"; fi
+        this_hdr="$(head -1 "$f")"
+        if [ "$first" = 1 ]; then
+            hdr="$this_hdr"; cat "$f" >> "$out"; first=0
+        else
+            # `tail -n +2` assumes every chunk has the same columns in the same
+            # order. If one does not, the rows land under the wrong headers and
+            # nothing downstream can see it.
+            if [ "$this_hdr" != "$hdr" ]; then
+                echo "ERROR: header mismatch in $f" >&2
+                echo "  expected: $hdr" >&2
+                echo "  found:    $this_hdr" >&2
+                return 1
+            fi
+            tail -n +2 "$f" >> "$out"
+        fi
+        CONCAT_N=$((CONCAT_N+1))
     done
     shopt -u nullglob
     [ -s "$out" ]
 }
 
+# Refuse to build a carrier matrix from fewer chunks than the cohort has, unless
+# the caller says that is what they meant.
+check_chunk_count() {   # label  n_found  n_expected  dir
+    local label="$1" found="$2" expected="$3" dir="$4"
+    [ "$found" -eq "$expected" ] && return 0
+    if [ "$ALLOW_PARTIAL" = 1 ]; then
+        echo "[carrier] WARNING: $label has $found chunk table(s) for $expected chunk VCF(s) in $dir." >&2
+        echo "          --allow-partial given, continuing; carrier counts are for the chunks present only." >&2
+        return 0
+    fi
+    echo "ERROR: $label has $found chunk table(s) but --norm-dir holds $expected chunk VCF(s)." >&2
+    echo "       Missing: $(( expected - found )). A carrier matrix built now would be well-formed" >&2
+    echo "       and would under-count carriers, with nothing downstream able to tell." >&2
+    echo "       Finish or re-run the missing chunks in $dir, or pass --allow-partial if a" >&2
+    echo "       subset is genuinely what you want." >&2
+    exit 4
+}
+
+# Chunk inventory first: the number of QC'd VCFs is the cohort's chunk count,
+# and every classifier directory is expected to hold one table per chunk.
+shopt -s nullglob
+vcfs=("$NORM"/*.norm.vcf.gz)
+[ ${#vcfs[@]} -eq 0 ] && vcfs=("$NORM"/*.vcf.gz)
+[ ${#vcfs[@]} -eq 0 ] && vcfs=("$NORM"/*.norm.vcf)
+[ ${#vcfs[@]} -eq 0 ] && vcfs=("$NORM"/*.vcf)
+shopt -u nullglob
+[ ${#vcfs[@]} -gt 0 ] || { echo "ERROR: no VCFs in $NORM" >&2; exit 3; }
+n_chunks=${#vcfs[@]}
+echo "[carrier] $n_chunks chunk VCF(s) in $NORM" >&2
+
 CV=""; AC=""
-[ -n "$CVDIR" ] && concat "$CVDIR" "*.clinvar_plp.tsv" "$WORK/clinvar.tsv" && CV="$WORK/clinvar.tsv" || true
-[ -n "$ACDIR" ] && concat "$ACDIR" "*.acmg_plp.tsv"    "$WORK/acmg.tsv"    && AC="$WORK/acmg.tsv"    || true
+if [ -n "$CVDIR" ]; then
+    concat "$CVDIR" "*.clinvar_plp.tsv" "$WORK/clinvar.tsv" && CV="$WORK/clinvar.tsv" || true
+    check_chunk_count "--clinvar-dir" "$CONCAT_N" "$n_chunks" "$CVDIR"
+fi
+if [ -n "$ACDIR" ]; then
+    concat "$ACDIR" "*.acmg_plp.tsv" "$WORK/acmg.tsv" && AC="$WORK/acmg.tsv" || true
+    check_chunk_count "--acmg-dir" "$CONCAT_N" "$n_chunks" "$ACDIR"
+fi
 [ -n "$CV$AC" ] || { echo "ERROR: no classifier TSVs found under the given dirs" >&2; exit 3; }
 
 # qualifying positions = union of is_clinvar_PLP==1 and is_acmg_PLP==1 (header-located columns)
@@ -94,13 +158,6 @@ echo "[carrier] $(wc -l < "$WORK/qual.pos.txt") qualifying positions" >&2
 
 # genotypes at qualifying positions from every norm VCF → gt.tsv (chr pos ref alt sample GT)
 : > "$WORK/gt.tsv"
-shopt -s nullglob
-vcfs=("$NORM"/*.norm.vcf.gz)
-[ ${#vcfs[@]} -eq 0 ] && vcfs=("$NORM"/*.vcf.gz)
-[ ${#vcfs[@]} -eq 0 ] && vcfs=("$NORM"/*.norm.vcf)
-[ ${#vcfs[@]} -eq 0 ] && vcfs=("$NORM"/*.vcf)
-shopt -u nullglob
-[ ${#vcfs[@]} -gt 0 ] || { echo "ERROR: no VCFs in $NORM" >&2; exit 3; }
 
 if [ -s "$WORK/qual.pos.txt" ]; then
     have_bcf=0; command -v "$BCF" >/dev/null 2>&1 && have_bcf=1
@@ -133,7 +190,18 @@ EXTRACT
 
     echo "[carrier] extracting ${#vcfs[@]} chunk(s) with ${JOBS} parallel worker(s)" >&2
     printf '%s\n' "${vcfs[@]}" | xargs -r -P "$JOBS" -I{} "$WORK/extract_one.sh" {}
-    cat "$WORK"/parts/*.gt >> "$WORK/gt.tsv" 2>/dev/null || true
+    # One part file per chunk, or a chunk's genotypes are missing from the
+    # matrix. `|| true` here previously turned that into a silently smaller
+    # cohort; xargs reports a failed worker, but an absent part file after a
+    # successful run would not have been noticed.
+    shopt -s nullglob
+    parts=("$WORK"/parts/*.gt)
+    shopt -u nullglob
+    if [ ${#parts[@]} -ne "$n_chunks" ]; then
+        echo "ERROR: GT extraction produced ${#parts[@]} part file(s) for $n_chunks chunk(s)." >&2
+        exit 4
+    fi
+    cat "${parts[@]}" >> "$WORK/gt.tsv"
 fi
 
 python3 "$REPO/bin/build_carrier_matrix.py" \
