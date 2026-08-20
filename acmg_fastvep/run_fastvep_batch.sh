@@ -87,9 +87,30 @@ echo "[batch] ${#inputs[@]} input VCF(s) from $INDIR" >&2
 
 MANIFEST="$OUTDIR/batch_manifest.tsv"
 : > "$MANIFEST"
-n_submitted=0; n_ok=0; n_fail=0
+n_submitted=0; n_ok=0; n_fail=0; n_skipped=0
 for vcf in "${inputs[@]}"; do
     name="$(basename "$vcf")"; name="${name%.gz}"; name="${name%.vcf}"; name="${name%.norm}"
+
+    # Skip a chunk whose expected output(s) already exist and are non-empty —
+    # makes the batch driver safe to re-run after a partial/interrupted run
+    # (e.g. resubmitting after adding new SA databases, without redoing chunks
+    # that already completed under the old ones).
+    vep_out="$OUTDIR/${name}.fastvep.vcf.gz"
+    acmg_out="$OUTDIR/${name}.acmg_plp.tsv"
+    already_done=0
+    if [ -s "$vep_out" ]; then
+        if [ "$DO_ACMG" = 1 ]; then
+            [ -s "$acmg_out" ] && already_done=1
+        else
+            already_done=1
+        fi
+    fi
+    if [ "$already_done" = 1 ]; then
+        printf '%s\tskipped-already-done\n' "$name" >> "$MANIFEST"
+        n_skipped=$((n_skipped+1))
+        continue
+    fi
+
     if [ "$USE_LSF" = 1 ]; then
         bsub -P "$PROJECT" -q "$QUEUE" -n "${THREADS:-2}" \
              -R "rusage[mem=8000]" -W "$WALL" \
@@ -108,12 +129,12 @@ for vcf in "${inputs[@]}"; do
 done
 
 if [ "$USE_LSF" = 1 ]; then
-    echo "[batch] submitted $n_submitted LSF jobs. Manifest: $MANIFEST" >&2
+    echo "[batch] submitted $n_submitted LSF jobs, skipped $n_skipped already-done. Manifest: $MANIFEST" >&2
     echo "[batch] (concat, if wanted, after jobs finish: rerun with --concat and no --lsf, or concat manually)" >&2
     exit 0
 fi
 
-echo "[batch] done: $n_ok ok, $n_fail failed of ${#inputs[@]}. Manifest: $MANIFEST" >&2
+echo "[batch] done: $n_ok ok, $n_fail failed, $n_skipped skipped (already done) of ${#inputs[@]}. Manifest: $MANIFEST" >&2
 
 # optional concat of per-chunk ACMG tables into one
 if [ "$DO_CONCAT" = 1 ] && [ "$DO_ACMG" = 1 ]; then
