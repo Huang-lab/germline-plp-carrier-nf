@@ -1,0 +1,63 @@
+name: CI
+
+# The tests were already the expensive part; this makes them a guarantee rather
+# than documentation. 49 tests existed in this repo before this workflow and
+# nothing ran them on push.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: shell syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Every driver script here runs unattended on LSF, where a syntax error
+      # surfaces as a job that burned its walltime doing nothing.
+      - name: bash -n every tracked shell script
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "::error file=$f::bash -n failed"; fail=1; }
+          done < <(git ls-files '*.sh' '*.lsf' 'hooks/*')
+          exit "$fail"
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # Advisory for now: the existing scripts are not shellcheck-clean, and
+          # a red build on style would train people to ignore this job. Tighten
+          # to a failing gate once the backlog is down.
+          git ls-files '*.sh' '*.lsf' | xargs -r shellcheck -S error || true
+
+  python:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        # No pyproject/requirements for the test path: the suite deliberately
+        # depends on nothing but the stdlib so it runs on a bare cluster node.
+        run: python -m pip install --quiet pytest
+      - name: Pipeline unit tests
+        run: python -m pytest tests/ -q
+      - name: acmg_fastvep wrapper tests
+        # The fastVEP smoke test skips itself when the binary is absent, which
+        # it is here; the rest drive the shell wrappers with stubs.
+        run: python -m pytest acmg_fastvep/tests/ -q
+
+  status:
+    name: CI OK
+    needs: [shell, python]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "all jobs green"

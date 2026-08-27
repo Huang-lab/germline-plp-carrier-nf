@@ -88,6 +88,26 @@ name="$(basename "$IN")"; name="${name%.gz}"; name="${name%.vcf}"; name="${name%
 # The parser reads .gz transparently.
 VEPOUT="$OUTDIR/${name}.fastvep.vcf.gz"
 
+# Outputs are published by rename, never streamed into their final path.
+#
+# The redirect `... | gzip -c > "$VEPOUT"` creates $VEPOUT the instant the run
+# starts, so a chunk killed at the LSF walltime leaves a non-empty file holding
+# a prefix of the records. Worse, that prefix is a *valid* gzip stream — `gzip
+# -t` passes on it, because gzip closed cleanly when its stdin went away — so
+# nothing downstream can tell it from a complete annotation. run_fastvep_batch.sh
+# then reads `[ -s "$VEPOUT" ]` as "already done" and skips the chunk on the
+# resubmit that was supposed to finish it. That is the batch3 dropped-chunk
+# incident with the manifest reporting success.
+#
+# Streaming to a temp file and renaming on completion makes the final path mean
+# what the batch driver assumes it means: present iff complete. Same lesson as
+# Huang-lab/fastVEP#88, one layer up.
+VEPTMP="$OUTDIR/.${name}.fastvep.vcf.gz.partial"
+ACMGTMP="$OUTDIR/.${name}.acmg_plp.tsv.partial"
+# Clear stale partials from an earlier killed run, and clean up after this one.
+rm -f "$VEPTMP" "$ACMGTMP"
+trap 'rm -f "$VEPTMP" "$ACMGTMP"' EXIT
+
 # --- build the annotate command ---
 cmd=("$FASTVEP" annotate --input "$IN" --output - --gff3 "$GFF3" --output-format vcf)
 [ -n "$FASTA" ]      && cmd+=(--fasta "$FASTA")
@@ -99,14 +119,21 @@ if [ "$DO_ACMG" = 1 ]; then
 fi
 
 echo "[fastvep] ${cmd[*]} | gzip > $VEPOUT" >&2
-"${cmd[@]}" | gzip -c > "$VEPOUT"
+"${cmd[@]}" | gzip -c > "$VEPTMP"
 
 # --- ACMG post-parse (only in --acmg mode) ---
+#
+# Both artifacts are produced before either is published, so the pair the batch
+# driver tests for is never half-present: a parse that dies does not leave a
+# complete VCF next to a truncated TSV.
 if [ "$DO_ACMG" = 1 ]; then
     ACMGOUT="$OUTDIR/${name}.acmg_plp.tsv"
-    echo "[parse] $VEPOUT -> $ACMGOUT" >&2
-    python3 "$HERE/parse_fastvep_acmg.py" --vcf "$VEPOUT" --out "$ACMGOUT"
+    echo "[parse] (pending) -> $ACMGOUT" >&2
+    python3 "$HERE/parse_fastvep_acmg.py" --vcf "$VEPTMP" --out "$ACMGTMP"
+    mv -f "$VEPTMP" "$VEPOUT"
+    mv -f "$ACMGTMP" "$ACMGOUT"
     echo "[done] $VEPOUT  $ACMGOUT" >&2
 else
+    mv -f "$VEPTMP" "$VEPOUT"
     echo "[done] $VEPOUT" >&2
 fi

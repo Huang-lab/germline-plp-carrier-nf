@@ -95,8 +95,19 @@ for vcf in "${inputs[@]}"; do
     # makes the batch driver safe to re-run after a partial/interrupted run
     # (e.g. resubmitting after adding new SA databases, without redoing chunks
     # that already completed under the old ones).
+    #
+    # This is only sound because run_fastvep.sh publishes by rename: the final
+    # paths exist iff the run completed. Before that, a chunk killed at the
+    # walltime left a truncated-but-valid .vcf.gz here and the resubmit meant to
+    # finish it skipped it instead — silently dropping every carrier in the
+    # missing tail. A leftover .partial is evidence of exactly that, so say so
+    # rather than treating the chunk as done.
     vep_out="$OUTDIR/${name}.fastvep.vcf.gz"
     acmg_out="$OUTDIR/${name}.acmg_plp.tsv"
+    for stale in "$OUTDIR/.${name}.fastvep.vcf.gz.partial" \
+                 "$OUTDIR/.${name}.acmg_plp.tsv.partial"; do
+        [ -e "$stale" ] && echo "[batch] note: clearing stale partial from an interrupted run: $stale" >&2
+    done
     already_done=0
     if [ -s "$vep_out" ]; then
         if [ "$DO_ACMG" = 1 ]; then
@@ -141,13 +152,36 @@ if [ "$DO_CONCAT" = 1 ] && [ "$DO_ACMG" = 1 ]; then
     OUT_ALL="$OUTDIR/all.acmg_plp.tsv"
     first=1
     : > "$OUT_ALL"
+    n_tsv=0
+    hdr=""
     for tsv in "$OUTDIR"/*.acmg_plp.tsv; do
         [ "$tsv" = "$OUT_ALL" ] && continue
         [ -s "$tsv" ] || continue
-        if [ "$first" = 1 ]; then cat "$tsv" >> "$OUT_ALL"; first=0
-        else tail -n +2 "$tsv" >> "$OUT_ALL"; fi
+        # Every chunk must agree on the column layout, or `tail -n +2` splices
+        # rows under the wrong headers and the misalignment is invisible.
+        this_hdr="$(head -1 "$tsv")"
+        if [ "$first" = 1 ]; then
+            hdr="$this_hdr"; cat "$tsv" >> "$OUT_ALL"; first=0
+        else
+            if [ "$this_hdr" != "$hdr" ]; then
+                echo "[batch] ERROR: header mismatch in $tsv; refusing to concatenate" >&2
+                echo "  expected: $hdr" >&2
+                echo "  found:    $this_hdr" >&2
+                exit 4
+            fi
+            tail -n +2 "$tsv" >> "$OUT_ALL"
+        fi
+        n_tsv=$((n_tsv+1))
     done
-    echo "[batch] concatenated ACMG table: $OUT_ALL" >&2
+    # A concatenation over fewer chunks than were asked for is the dropped-chunk
+    # incident again: the table is well-formed, the cohort is quietly smaller.
+    if [ "$n_tsv" -ne "${#inputs[@]}" ]; then
+        echo "[batch] ERROR: concatenated $n_tsv ACMG table(s) but $((${#inputs[@]})) input VCF(s) were given." >&2
+        echo "        Missing chunks are listed as anything other than 'ok'/'skipped-already-done' in $MANIFEST." >&2
+        echo "        Re-run the failed chunks first; $OUT_ALL would under-count carriers." >&2
+        exit 4
+    fi
+    echo "[batch] concatenated ACMG table: $OUT_ALL ($n_tsv chunks)" >&2
 fi
 
 [ "$n_fail" -eq 0 ] || exit 1
