@@ -34,7 +34,15 @@ CHR_DIR="$(sed -n "${LSB_JOBINDEX}p" "$AC_MANIFEST")"
 chr_name="$(basename "$CHR_DIR")"
 chr_name="${chr_name#results-fastvep-}"
 OUT="$AC_OUT_ROOT/results-carriers-${chr_name}"
-mkdir -p "$OUT"
+mkdir -p "$OUT" logs
+
+# The #BSUB -oo/-eo above are named by job/array-index (%J.%I), which LSF
+# needs at submit time before the chromosome is known. Tee the rest of this
+# task's output into a chromosome-named log too, so logs/ is browsable by
+# chromosome without cross-referencing job IDs.
+CHRLOG_OUT="logs/acmg-carriers.${chr_name}.out"
+CHRLOG_ERR="logs/acmg-carriers.${chr_name}.err"
+exec > >(tee -a "$CHRLOG_OUT") 2> >(tee -a "$CHRLOG_ERR" >&2)
 
 echo "[acmg-carriers-task] index=$LSB_JOBINDEX chr_dir=$CHR_DIR out=$OUT" >&2
 "$HERE/run_acmg_carriers_chr.sh" --in-dir "$CHR_DIR" -o "$OUT" -j "${AC_JOBS:-4}"

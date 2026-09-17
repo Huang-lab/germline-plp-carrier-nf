@@ -53,10 +53,22 @@ NO_MANE_SENTINEL = "NO_MANE_TRANSCRIPT"
 CSQ_FUNCTIONAL_FIELDS = ("Consequence", "IMPACT", "HGVSc", "HGVSp", "EXON", "INTRON")
 SPLICEAI_FIELDS = ("DS_AG", "DS_AL", "DS_DG", "DS_DL")
 
+# The standard fixed set of "predicted loss-of-function" consequence terms
+# (gnomAD/LOFTEE convention: stop_gained, frameshift_variant, splice acceptor/
+# donor, start_lost). This is a category-membership lookup against a term list
+# used identically across the field, not a judgement call this pipeline makes
+# — it does NOT account for NMD escape or last-exon position, so it is the
+# basic pLoF flag, not the more rigorous LOFTEE-style one. See docs/ACMG_CRITERIA.md.
+LOF_CONSEQUENCES = frozenset({
+    "stop_gained", "frameshift_variant",
+    "splice_acceptor_variant", "splice_donor_variant",
+    "start_lost",
+})
+
 VARIANT_HEADER = (
     "chr\tpos\tref\talt\tgene\tacmg_label\tacmg_criteria\t"
     "n_pathogenic_criteria\tn_benign_criteria\tis_acmg_PLP\t"
-    "consequence\timpact\thgvsc\thgvsp\texon\tintron\t"
+    "consequence\timpact\thgvsc\thgvsp\texon\tintron\tis_lof_consequence\t"
     "spliceai_ds_ag\tspliceai_ds_al\tspliceai_ds_dg\tspliceai_ds_dl\n"
 )
 CARRIER_HEADER = "chr\tpos\tref\talt\tgene\tperson_id\tGT\tzygosity\n"
@@ -94,6 +106,29 @@ def _find_mane_blocks_by_gene(blocks, i_mane, i_sym):
 
 def _field(f, idx):
     return decode_csq_field(f[idx]).strip() if 0 <= idx < len(f) else ""
+
+
+def _is_lof(consequence: str) -> int:
+    """1 if any '&'-joined Consequence term is in the standard pLoF set."""
+    return int(any(term in LOF_CONSEQUENCES for term in consequence.split("&")))
+
+
+def _summarize_unmapped_blocks(blocks, i_sym, i_func_consequence):
+    """For a variant with no MANE-tagged transcript: the union of gene symbols
+    and consequence terms seen across every block, so a flagged row still says
+    what's actually there (e.g. genuinely intergenic vs. a real gene lacking
+    MANE) instead of going blank. Purely descriptive — no block is picked."""
+    genes: list[str] = []
+    consequences: list[str] = []
+    for block in blocks:
+        f = block.split("|")
+        gene = _field(f, i_sym)
+        if gene and gene not in genes:
+            genes.append(gene)
+        cons = _field(f, i_func_consequence)
+        if cons and cons not in consequences:
+            consequences.append(cons)
+    return ";".join(genes), ";".join(consequences)
 
 
 def _parse_spliceai_info(info: str, spliceai_id: str | None):
@@ -190,9 +225,11 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict) -> None:
 
             if not by_gene:
                 stats["no_mane"] += 1
+                genes_seen, consequences_seen = _summarize_unmapped_blocks(
+                    blocks, i_sym, i_func["Consequence"])
                 out_variants.write(
-                    f"{chrom}\t{pos}\t{ref}\t{alt}\t\t{NO_MANE_SENTINEL}\t\t0\t0\t0\t"
-                    "\t\t\t\t\t\t\t\t\t\n"
+                    f"{chrom}\t{pos}\t{ref}\t{alt}\t{genes_seen}\t{NO_MANE_SENTINEL}\t\t0\t0\t0\t"
+                    f"{consequences_seen}\t\t\t\t\t\t\t\t\t\t\n"
                 )
                 continue
 
@@ -221,6 +258,7 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict) -> None:
                 label = _LABEL.get(sh, sh)
                 is_plp = int(sh in _PLP)
                 func = {name: _field(f, i_func[name]) for name in CSQ_FUNCTIONAL_FIELDS}
+                is_lof = _is_lof(func["Consequence"])
 
                 spliceai_by_allele = _parse_spliceai_info(info, spliceai_id)
                 ds = spliceai_by_allele.get(alt, ("", "", "", ""))
@@ -229,7 +267,7 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict) -> None:
                     f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene}\t{label}\t{';'.join(codes)}\t"
                     f"{npath}\t{nben}\t{is_plp}\t"
                     f"{func['Consequence']}\t{func['IMPACT']}\t{func['HGVSc']}\t{func['HGVSp']}\t"
-                    f"{func['EXON']}\t{func['INTRON']}\t"
+                    f"{func['EXON']}\t{func['INTRON']}\t{is_lof}\t"
                     f"{ds[0]}\t{ds[1]}\t{ds[2]}\t{ds[3]}\n"
                 )
 
