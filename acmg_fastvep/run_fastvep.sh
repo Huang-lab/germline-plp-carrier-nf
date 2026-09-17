@@ -32,6 +32,8 @@ Options:
   --fasta <fa>            reference FASTA (needed for --hgvs / sequence context)
   --hgvs                  emit HGVSc/HGVSp (requires --fasta)
   --pick                  most-severe consequence per variant (smaller output)
+  --transcript-cache <f>  binary transcript cache from `setup_fastvep.sh --build-cache`
+                          (skips re-deriving the transcript index from the GFF3)
   --acmg                  run ACMG-AMP classification (REQUIRES --sa-dir)
   --sa-dir <dir>          fastVEP supplementary-annotation DB directory
   --acmg-config <toml>    ACMG threshold overrides
@@ -48,21 +50,23 @@ USAGE
 
 FASTVEP="${FASTVEP:-fastvep}"
 IN=""; OUTDIR=""; GFF3=""; FASTA=""; SA_DIR=""; ACMG_CONFIG=""; THREADS=""
+TRANSCRIPT_CACHE=""
 DO_ACMG=0; DO_HGVS=0; DO_PICK=0
 while [ $# -gt 0 ]; do
     case "$1" in
-        -i|--input)     IN="$2"; shift 2 ;;
-        -o|--outdir)    OUTDIR="$2"; shift 2 ;;
-        --gff3)         GFF3="$2"; shift 2 ;;
-        --fasta)        FASTA="$2"; shift 2 ;;
-        --sa-dir)       SA_DIR="$2"; shift 2 ;;
-        --acmg-config)  ACMG_CONFIG="$2"; shift 2 ;;
-        --threads)      THREADS="$2"; shift 2 ;;
-        --fastvep)      FASTVEP="$2"; shift 2 ;;
-        --acmg)         DO_ACMG=1; shift ;;
-        --hgvs)         DO_HGVS=1; shift ;;
-        --pick)         DO_PICK=1; shift ;;
-        -h|--help)      usage ;;
+        -i|--input)          IN="$2"; shift 2 ;;
+        -o|--outdir)         OUTDIR="$2"; shift 2 ;;
+        --gff3)              GFF3="$2"; shift 2 ;;
+        --fasta)             FASTA="$2"; shift 2 ;;
+        --sa-dir)            SA_DIR="$2"; shift 2 ;;
+        --acmg-config)       ACMG_CONFIG="$2"; shift 2 ;;
+        --transcript-cache)  TRANSCRIPT_CACHE="$2"; shift 2 ;;
+        --threads)           THREADS="$2"; shift 2 ;;
+        --fastvep)           FASTVEP="$2"; shift 2 ;;
+        --acmg)              DO_ACMG=1; shift ;;
+        --hgvs)              DO_HGVS=1; shift ;;
+        --pick)              DO_PICK=1; shift ;;
+        -h|--help)           usage ;;
         *) echo "Unknown arg: $1" >&2; usage ;;
     esac
 done
@@ -72,6 +76,7 @@ done
 command -v "$FASTVEP" >/dev/null 2>&1 || { echo "ERROR: fastvep not found ($FASTVEP) — see setup_fastvep.sh" >&2; exit 3; }
 for f in "$IN" "$GFF3"; do [ -s "$f" ] || { echo "ERROR: missing/empty: $f" >&2; exit 3; }; done
 if [ -n "$FASTA" ]; then [ -s "$FASTA" ] || { echo "ERROR: missing/empty FASTA: $FASTA" >&2; exit 3; }; fi
+if [ -n "$TRANSCRIPT_CACHE" ]; then [ -s "$TRANSCRIPT_CACHE" ] || { echo "ERROR: missing/empty --transcript-cache: $TRANSCRIPT_CACHE" >&2; exit 3; }; fi
 if [ "$DO_HGVS" = 1 ] && [ -z "$FASTA" ]; then echo "ERROR: --hgvs requires --fasta" >&2; exit 3; fi
 if [ "$DO_ACMG" = 1 ]; then
     [ -n "$SA_DIR" ] || { echo "ERROR: --acmg requires --sa-dir (supplementary DBs)" >&2; exit 3; }
@@ -110,9 +115,10 @@ trap 'rm -f "$VEPTMP" "$ACMGTMP"' EXIT
 
 # --- build the annotate command ---
 cmd=("$FASTVEP" annotate --input "$IN" --output - --gff3 "$GFF3" --output-format vcf)
-[ -n "$FASTA" ]      && cmd+=(--fasta "$FASTA")
-[ "$DO_HGVS" = 1 ]   && cmd+=(--hgvs)
-[ "$DO_PICK" = 1 ]   && cmd+=(--pick)
+[ -n "$FASTA" ]              && cmd+=(--fasta "$FASTA")
+[ "$DO_HGVS" = 1 ]           && cmd+=(--hgvs)
+[ "$DO_PICK" = 1 ]           && cmd+=(--pick)
+[ -n "$TRANSCRIPT_CACHE" ]   && cmd+=(--transcript-cache "$TRANSCRIPT_CACHE")
 if [ "$DO_ACMG" = 1 ]; then
     cmd+=(--sa-dir "$SA_DIR" --acmg)
     [ -n "$ACMG_CONFIG" ] && cmd+=(--acmg-config "$ACMG_CONFIG")

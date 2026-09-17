@@ -160,8 +160,9 @@ cat >&2 <<EOF
   export FASTVEP="$(command -v fastvep)"
   export GFF3="$GFF3"
 ${FASTA:+  export FASTA="$FASTA"}
+${CACHE:+  export CACHE="$CACHE"}
 
   # smoke test (plain annotation, one chunk):
   acmg_fastvep/run_fastvep.sh -i <norm_qc/CHUNK.norm.vcf.gz> -o results-fastvep \\
-      --gff3 "\$GFF3" ${FASTA:+--fasta "\$FASTA" --hgvs}
+      --gff3 "\$GFF3" ${FASTA:+--fasta "\$FASTA" --hgvs} ${CACHE:+--transcript-cache "\$CACHE"}
 EOF
