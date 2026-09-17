@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#BSUB -J acmg-carriers
+#BSUB -q premium
+#BSUB -n 4
+#BSUB -R "rusage[mem=8000] span[hosts=1]"
+#BSUB -W 4:00
+#BSUB -oo logs/acmg-carriers.%J.%I.out
+#BSUB -eo logs/acmg-carriers.%J.%I.err
+#
+# One array task = one chromosome. Submitted only via submit_acmg_carriers.sh,
+# which issues ONE `bsub -J "acmg-carriers[1-N]"` for all N chromosomes at
+# once — this script never loops over chromosomes itself, and is never
+# bsub'd directly per-chromosome.
+#
+# Reads its assigned chromosome directory from $AC_MANIFEST at line
+# $LSB_JOBINDEX, and writes into $AC_OUT_ROOT/results-carriers-<chrname>/.
+set -euo pipefail
+
+: "${AC_MANIFEST:?set AC_MANIFEST=<manifest file, one chr dir per line>}"
+: "${AC_OUT_ROOT:?set AC_OUT_ROOT=<root dir to write results-carriers-chrN_v6/ under>}"
+: "${LSB_JOBINDEX:?this script must run as an LSF array task}"
+
+HERE=""
+for cand in "$(cd "$(dirname "$0")" 2>/dev/null && pwd)" \
+            "${LSB_SUBCWD:-$PWD}/acmg_fastvep" "$PWD/acmg_fastvep" "${AC_REPO:-}/acmg_fastvep"; do
+    [ -n "$cand" ] && [ -f "$cand/run_acmg_carriers_chr.sh" ] && { HERE="$cand"; break; }
+done
+[ -n "$HERE" ] || { echo "ERROR: cannot find run_acmg_carriers_chr.sh — submit from the repo root, or set AC_REPO=<repo path>" >&2; exit 3; }
+
+CHR_DIR="$(sed -n "${LSB_JOBINDEX}p" "$AC_MANIFEST")"
+[ -n "$CHR_DIR" ] || { echo "ERROR: no manifest line at index $LSB_JOBINDEX in $AC_MANIFEST" >&2; exit 3; }
+[ -d "$CHR_DIR" ] || { echo "ERROR: manifest line is not a directory: $CHR_DIR" >&2; exit 3; }
+
+chr_name="$(basename "$CHR_DIR")"
+chr_name="${chr_name#results-fastvep-}"
+OUT="$AC_OUT_ROOT/results-carriers-${chr_name}"
+mkdir -p "$OUT"
+
+echo "[acmg-carriers-task] index=$LSB_JOBINDEX chr_dir=$CHR_DIR out=$OUT" >&2
+"$HERE/run_acmg_carriers_chr.sh" --in-dir "$CHR_DIR" -o "$OUT" -j "${AC_JOBS:-4}"
