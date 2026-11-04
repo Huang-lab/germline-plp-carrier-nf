@@ -18,8 +18,8 @@ Required:
   --gff3 <gff3>           Ensembl GFF3
 
 Passthrough to run_fastvep.sh:
-  --fasta <fa>  --hgvs  --pick  --acmg  --sa-dir <dir>  --acmg-config <toml>
-  --threads <N>  --fastvep <path>
+  --fasta <fa>  --hgvs  --pick  --transcript-cache <f>  --acmg  --sa-dir <dir>
+  --acmg-config <toml>  --threads <N>  --fastvep <path>
 
 Batch options:
   --lsf                   submit one bsub per chunk (else run locally, sequential)
@@ -34,27 +34,29 @@ USAGE
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 INDIR=""; OUTDIR=""; GFF3=""; FASTA=""; SA_DIR=""; ACMG_CONFIG=""; THREADS=""; FASTVEP=""
+TRANSCRIPT_CACHE=""
 DO_ACMG=0; DO_HGVS=0; DO_PICK=0; USE_LSF=0; DO_CONCAT=0
 PROJECT="${MINERVA_ALLOCATION:-}"; QUEUE="premium"; WALL="4:00"
 while [ $# -gt 0 ]; do
     case "$1" in
-        --in-dir)       INDIR="$2"; shift 2 ;;
-        -o|--outdir)    OUTDIR="$2"; shift 2 ;;
-        --gff3)         GFF3="$2"; shift 2 ;;
-        --fasta)        FASTA="$2"; shift 2 ;;
-        --sa-dir)       SA_DIR="$2"; shift 2 ;;
-        --acmg-config)  ACMG_CONFIG="$2"; shift 2 ;;
-        --threads)      THREADS="$2"; shift 2 ;;
-        --fastvep)      FASTVEP="$2"; shift 2 ;;
-        --acmg)         DO_ACMG=1; shift ;;
-        --hgvs)         DO_HGVS=1; shift ;;
-        --pick)         DO_PICK=1; shift ;;
-        --lsf)          USE_LSF=1; shift ;;
-        -P|--project)   PROJECT="$2"; shift 2 ;;
-        --queue)        QUEUE="$2"; shift 2 ;;
-        --walltime)     WALL="$2"; shift 2 ;;
-        --concat)       DO_CONCAT=1; shift ;;
-        -h|--help)      usage ;;
+        --in-dir)             INDIR="$2"; shift 2 ;;
+        -o|--outdir)          OUTDIR="$2"; shift 2 ;;
+        --gff3)               GFF3="$2"; shift 2 ;;
+        --fasta)              FASTA="$2"; shift 2 ;;
+        --sa-dir)             SA_DIR="$2"; shift 2 ;;
+        --acmg-config)        ACMG_CONFIG="$2"; shift 2 ;;
+        --transcript-cache)   TRANSCRIPT_CACHE="$2"; shift 2 ;;
+        --threads)            THREADS="$2"; shift 2 ;;
+        --fastvep)            FASTVEP="$2"; shift 2 ;;
+        --acmg)               DO_ACMG=1; shift ;;
+        --hgvs)               DO_HGVS=1; shift ;;
+        --pick)               DO_PICK=1; shift ;;
+        --lsf)                USE_LSF=1; shift ;;
+        -P|--project)         PROJECT="$2"; shift 2 ;;
+        --queue)              QUEUE="$2"; shift 2 ;;
+        --walltime)           WALL="$2"; shift 2 ;;
+        --concat)             DO_CONCAT=1; shift ;;
+        -h|--help)            usage ;;
         *) echo "Unknown arg: $1" >&2; usage ;;
     esac
 done
@@ -70,11 +72,12 @@ common=(--gff3 "$GFF3")
 [ -n "$FASTA" ]        && common+=(--fasta "$FASTA")
 [ "$DO_HGVS" = 1 ]     && common+=(--hgvs)
 [ "$DO_PICK" = 1 ]     && common+=(--pick)
-[ "$DO_ACMG" = 1 ]     && common+=(--acmg)
-[ -n "$SA_DIR" ]       && common+=(--sa-dir "$SA_DIR")
-[ -n "$ACMG_CONFIG" ]  && common+=(--acmg-config "$ACMG_CONFIG")
-[ -n "$THREADS" ]      && common+=(--threads "$THREADS")
-[ -n "$FASTVEP" ]      && common+=(--fastvep "$FASTVEP")
+[ "$DO_ACMG" = 1 ]         && common+=(--acmg)
+[ -n "$SA_DIR" ]           && common+=(--sa-dir "$SA_DIR")
+[ -n "$ACMG_CONFIG" ]      && common+=(--acmg-config "$ACMG_CONFIG")
+[ -n "$TRANSCRIPT_CACHE" ] && common+=(--transcript-cache "$TRANSCRIPT_CACHE")
+[ -n "$THREADS" ]          && common+=(--threads "$THREADS")
+[ -n "$FASTVEP" ]          && common+=(--fastvep "$FASTVEP")
 
 # collect inputs (norm.vcf.gz preferred; fall back to any vcf.gz / vcf)
 shopt -s nullglob
