@@ -192,3 +192,99 @@ def test_parse_pick_order():
     for bad in ("length", "rank,rank", "foo", ""):
         with pytest.raises(ValueError):
             P.parse_pick_order(bad)
+
+
+def test_chr_driver_pick_mode(tmp_path):
+    """run_acmg_carriers_chr.sh --mode pick: two gz chunks -> concatenated tables
+    plus an aggregated summary.txt; refuses an outdir inside the input dir."""
+    import gzip
+    import shutil
+    indir = tmp_path / "results-fastvep-chr17_v6"
+    indir.mkdir()
+    recs = [
+        [("17", 100, [blk("stop_gained", "G1", "G1", "ENST1", "P", "PVS1", canonical="YES",
+                          impact="HIGH")], ("0/1", "0/0", "0/0"))],
+        [("17", 200, [blk("missense_variant", "G2", "G2", "ENST2", "VUS", "", mane="NM_2"),
+                      blk("upstream_gene_variant", "G3", "G3", "ENST3", "VUS", "")], HOMREF)],
+    ]
+    for i, r in enumerate(recs):
+        sub = tmp_path / f"c{i}"
+        sub.mkdir()
+        src = write_vcf(sub, r)
+        with open(src, "rb") as fi, gzip.open(indir / f"chunk{i}.fastvep.vcf.gz", "wb") as fo:
+            shutil.copyfileobj(fi, fo)
+    driver = HERE.parent / "run_acmg_carriers_chr.sh"
+    out = tmp_path / "results-acmg-pick" / "results-carriers-pick-chr17_v6"
+    res = subprocess.run(["bash", str(driver), "--in-dir", str(indir), "-o", str(out),
+                          "--mode", "pick", "-j", "2"], capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+    v = list(csv.DictReader((out / "acmg_variants.tsv").open(), delimiter="\t"))
+    assert sorted((r["gene"], r["pick_tier"]) for r in v) == [("G1", "only_candidate"),
+                                                              ("G2", "only_candidate")]
+    summary = (out / "summary.txt").read_text()
+    assert "2 variants -> 2 (variant, gene) rows" in summary
+    assert "flanking-only gene rows dropped: 1 " in summary
+    assert len((out / "acmg_carriers.tsv").read_text().splitlines()) == 2
+
+    bad = subprocess.run(["bash", str(driver), "--in-dir", str(indir), "-o", str(indir / "x"),
+                          "--mode", "pick"], capture_output=True, text=True)
+    assert bad.returncode == 3 and "refusing" in bad.stderr
+    assert not (indir / "x").exists()
+    bad = subprocess.run(["bash", str(driver), "--in-dir", str(indir), "-o", str(out),
+                          "--pick-order", "rank"], capture_output=True, text=True)
+    assert bad.returncode == 2
+
+
+def test_submit_pick_mode_with_stub_bsub(tmp_path):
+    """submit_acmg_carriers.sh --mode pick -> run_acmg_carriers_task.lsf, with a
+    stub bsub that runs every array index locally. Checks the output lands in
+    --out-root/results-carriers-pick-<chr>/, the batch root is left untouched,
+    and a --pick-order with commas survives the trip through bsub."""
+    import gzip
+    import os
+    import shutil
+    batch = tmp_path / "batch"
+    for chrom, pos in (("chr21", 100), ("chr22", 200)):
+        d = batch / f"results-fastvep-{chrom}_v6"
+        d.mkdir(parents=True)
+        src = write_vcf(tmp_path, [(chrom, pos, [
+            blk("missense_variant", "G", "G", "ENST2", "VUS", "", canonical="YES"),
+            blk("stop_gained", "G", "G", "ENST1", "P", "PVS1", impact="HIGH")],
+            ("0/1", "0/0", "1"))])
+        with open(src, "rb") as fi, gzip.open(d / "c.fastvep.vcf.gz", "wb") as fo:
+            shutil.copyfileobj(fi, fo)
+    before = sorted(str(p) for p in batch.rglob("*"))
+
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "bsub").write_text(
+        '#!/usr/bin/env bash\n'
+        'script="$(cat)"\n'
+        'n="$(printf "%s\\n" "$@" | sed -n "s/.*\\[1-\\([0-9]*\\)\\]$/\\1/p")"\n'
+        'for i in $(seq 1 "$n"); do LSB_JOBINDEX=$i bash -c "$script" || exit 1; done\n')
+    (stub / "bsub").chmod(0o755)
+    out_root = tmp_path / "results-acmg-pick"
+    env = dict(os.environ, PATH=f"{stub}:{os.environ['PATH']}")
+    submit = HERE.parent / "submit_acmg_carriers.sh"
+    res = subprocess.run(["bash", str(submit), "--batch-root", str(batch), "-P", "acc_x",
+                          "--mode", "pick", "--out-root", str(out_root),
+                          "--pick-order", "rank,mane_select"],
+                         capture_output=True, text=True, env=env, cwd=tmp_path)
+    assert res.returncode == 0, res.stderr
+    for chrom in ("chr21", "chr22"):
+        v = list(csv.DictReader(
+            (out_root / f"results-carriers-pick-{chrom}_v6" / "acmg_variants.tsv").open(),
+            delimiter="\t"))
+        # rank first -> stop_gained ENST1 wins over the canonical missense
+        assert [(r["transcript_id"], r["pick_tier"]) for r in v] == [("ENST1", "rank")]
+        c = (out_root / f"results-carriers-pick-{chrom}_v6" / "acmg_carriers.tsv").read_text()
+        assert "\themi\n" in c
+    assert sorted(str(p) for p in batch.rglob("*")) == before
+
+    # pick mode refuses a missing or nested --out-root
+    for extra in ([], ["--out-root", str(batch / "x")]):
+        bad = subprocess.run(["bash", str(submit), "--batch-root", str(batch), "-P", "acc_x",
+                              "--mode", "pick", *extra], capture_output=True, text=True,
+                             env=env, cwd=tmp_path)
+        assert bad.returncode != 0
+    assert sorted(str(p) for p in batch.rglob("*")) == before

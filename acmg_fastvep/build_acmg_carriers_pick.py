@@ -32,6 +32,7 @@ stderr summary so this is visible if it ever happens.
 from __future__ import annotations
 
 import argparse
+import json
 import os as _os
 import sys as _sys
 
@@ -514,6 +515,8 @@ def main(argv=None) -> int:
                     default=True, help="drop gene rows whose only consequences are "
                     "upstream/downstream_gene_variant (default)")
     fl.add_argument("--keep-flanking-genes", dest="drop_flanking", action="store_false")
+    ap.add_argument("--stats-json", help="also write the summary counters here (for per-chromosome "
+                    "aggregation by run_acmg_carriers_chr.sh)")
     args = ap.parse_args(argv)
 
     try:
@@ -530,8 +533,33 @@ def main(argv=None) -> int:
             process_vcf(path, ov, oc, stats, order, args.drop_flanking)
 
     print(format_summary(stats, order, args.drop_flanking), file=_sys.stderr)
+    if args.stats_json:
+        with open(args.stats_json, "w", encoding="utf-8") as fh:
+            json.dump({"order": order, "drop_flanking": args.drop_flanking, "stats": stats}, fh)
+    return 0
+
+
+def aggregate_stats_main(argv=None) -> int:
+    """`build_acmg_carriers_pick.py --aggregate a.json b.json ...`: sum per-chunk
+    counters and print the same summary for the whole set."""
+    paths = argv if argv is not None else _sys.argv[2:]
+    total = new_stats()
+    order, drop = [], True
+    for p in paths:
+        with open(p, encoding="utf-8") as fh:
+            d = json.load(fh)
+        order, drop = d["order"], d["drop_flanking"]
+        for k, v in d["stats"].items():
+            if k == "by_tier":
+                for t, n in v.items():
+                    total["by_tier"][t] = total["by_tier"].get(t, 0) + n
+            else:
+                total[k] += v
+    print(format_summary(total, order, drop))
     return 0
 
 
 if __name__ == "__main__":
+    if len(_sys.argv) > 1 and _sys.argv[1] == "--aggregate":
+        _sys.exit(aggregate_stats_main())
     _sys.exit(main())

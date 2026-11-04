@@ -19,31 +19,61 @@ Required:
 
 Options:
   -j, --jobs <N>    parallel chunk workers (default 4)
+  --mode <mane|pick>
+                    mane (default): build_acmg_carriers.py, MANE Select only.
+                    pick: build_acmg_carriers_pick.py, per-gene pick fallback.
+  --pick-order <s>  (pick mode) passed through as --pick-order
+  --keep-flanking-genes
+                    (pick mode) keep upstream/downstream-only gene rows
 USAGE
     exit 2
 }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-INDIR=""; OUTDIR=""; JOBS=4
+INDIR=""; OUTDIR=""; JOBS=4; MODE=mane; PICK_ORDER=""; KEEP_FLANKING=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --in-dir)    INDIR="$2"; shift 2 ;;
         -o|--outdir) OUTDIR="$2"; shift 2 ;;
         -j|--jobs)   JOBS="$2"; shift 2 ;;
+        --mode)      MODE="$2"; shift 2 ;;
+        --pick-order) PICK_ORDER="$2"; shift 2 ;;
+        --keep-flanking-genes) KEEP_FLANKING=1; shift ;;
         -h|--help)   usage ;;
         *) echo "Unknown arg: $1" >&2; usage ;;
     esac
 done
 [ -n "$INDIR" ] && [ -n "$OUTDIR" ] || usage
 [ -d "$INDIR" ] || { echo "ERROR: --in-dir not a directory: $INDIR" >&2; exit 3; }
+# EXTRA: shell-quoted options pasted verbatim into the generated per-chunk
+# script below (where \${name} is that chunk's name).
+EXTRA=""
+case "$MODE" in
+    mane) SCRIPT="build_acmg_carriers.py"
+          if [ -n "$PICK_ORDER" ] || [ "$KEEP_FLANKING" = 1 ]; then
+              echo "ERROR: --pick-order/--keep-flanking-genes need --mode pick" >&2; exit 2
+          fi ;;
+    pick) SCRIPT="build_acmg_carriers_pick.py"
+          EXTRA='--stats-json "$PARTS/${name}.stats.json"'
+          if [ -n "$PICK_ORDER" ]; then EXTRA="$EXTRA --pick-order $(printf '%q' "$PICK_ORDER")"; fi
+          if [ "$KEEP_FLANKING" = 1 ]; then EXTRA="$EXTRA --keep-flanking-genes"; fi ;;
+    *) echo "ERROR: --mode must be mane or pick (got $MODE)" >&2; exit 2 ;;
+esac
+# Never write into the directory being read: the fastVEP outputs are inputs only.
+# Checked before anything is created, so a bad --outdir leaves --in-dir untouched.
+in_real="$(realpath -e "$INDIR")"
+out_real="$(realpath -m "$OUTDIR")"
+case "$out_real/" in
+    "$in_real"/*) echo "ERROR: --outdir ($OUTDIR) is inside --in-dir ($INDIR); refusing" >&2; exit 3 ;;
+esac
+mkdir -p "$OUTDIR"
 
 shopt -s nullglob
 chunks=("$INDIR"/*.fastvep.vcf.gz)
 shopt -u nullglob
 [ ${#chunks[@]} -gt 0 ] || { echo "ERROR: no *.fastvep.vcf.gz in $INDIR" >&2; exit 3; }
-echo "[acmg-carriers] ${#chunks[@]} chunk(s) in $INDIR" >&2
+echo "[acmg-carriers] mode=$MODE ${#chunks[@]} chunk(s) in $INDIR" >&2
 
-mkdir -p "$OUTDIR"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/parts"
 
@@ -53,9 +83,12 @@ set -euo pipefail
 vcf="\$1"
 [ -s "\$vcf" ] || { echo "ERROR: empty or missing chunk: \$vcf" >&2; exit 3; }
 name="\$(basename "\$vcf")"; name="\${name%.fastvep.vcf.gz}"
-python3 "$HERE/build_acmg_carriers.py" --vcf "\$vcf" \\
+PARTS="$WORK/parts"
+python3 "$HERE/$SCRIPT" --vcf "\$vcf" \\
     --out-variants "$WORK/parts/\${name}.variants.tsv" \\
-    --out-carriers "$WORK/parts/\${name}.carriers.tsv"
+    --out-carriers "$WORK/parts/\${name}.carriers.tsv" \\
+    $EXTRA 2> "$WORK/parts/\${name}.stderr" \\
+    || { cat "$WORK/parts/\${name}.stderr" >&2; exit 1; }
 echo "[acmg-carriers] done \$(basename "\$vcf")" >&2
 EOF
 chmod +x "$WORK/run_one.sh"
@@ -99,6 +132,14 @@ if [ "$n_variants" -ne "${#chunks[@]}" ] || [ "$n_carriers" -ne "${#chunks[@]}" 
          "to publish a carrier table that would silently under-count the cohort." >&2
     exit 4
 fi
+
+if [ "$MODE" = pick ]; then
+    # One summary for the whole chromosome (sum of every chunk's counters),
+    # plus each chunk's own stderr, kept next to the tables.
+    python3 "$HERE/build_acmg_carriers_pick.py" --aggregate "$WORK"/parts/*.stats.json \
+        | tee "$OUTDIR/summary.txt" >&2
+fi
+cat "$WORK"/parts/*.stderr > "$OUTDIR/chunks.stderr.log"
 
 echo "[acmg-carriers] done: $OUTDIR/acmg_variants.tsv ($(( $(wc -l < "$OUTDIR/acmg_variants.tsv") - 1 )) rows), " \
      "$OUTDIR/acmg_carriers.tsv ($(( $(wc -l < "$OUTDIR/acmg_carriers.tsv") - 1 )) rows)" >&2
