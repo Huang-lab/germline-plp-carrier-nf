@@ -288,3 +288,41 @@ def test_submit_pick_mode_with_stub_bsub(tmp_path):
                              env=env, cwd=tmp_path)
         assert bad.returncode != 0
     assert sorted(str(p) for p in batch.rglob("*")) == before
+
+
+def test_compare_mane_vs_pick(tmp_path):
+    """Run both scripts on one synthetic chunk and compare: a gene with no MANE
+    transcript gains a P/LP call under pick; a hemizygous carrier appears."""
+    rec = [
+        ("X", 100, [blk("stop_gained", "GNOMANE", "GN", "ENST1", "P", "PVS1", canonical="YES",
+                        impact="HIGH")], ("1", "0/1", "0/0")),
+        ("X", 200, [blk("missense_variant", "GM", "GM", "ENST2", "LP", "PM1", mane="NM_2")],
+         ("0/1", "0/0", "0/0")),
+    ]
+    vcf = write_vcf(tmp_path, rec)
+    mane_root, pick_root = tmp_path / "mane", tmp_path / "pick"
+    md, pd = mane_root / "results-carriers-chrX_v6", pick_root / "results-carriers-pick-chrX_v6"
+    md.mkdir(parents=True)
+    pd.mkdir(parents=True)
+    for script, d in (("build_acmg_carriers.py", md), ("build_acmg_carriers_pick.py", pd)):
+        subprocess.run([sys.executable, str(HERE.parent / script), "--vcf", str(vcf),
+                        "--out-variants", str(d / "acmg_variants.tsv"),
+                        "--out-carriers", str(d / "acmg_carriers.tsv")],
+                       check=True, capture_output=True)
+    out = pick_root / "comparison"
+    subprocess.run([sys.executable, str(HERE.parent / "compare_acmg_pick_vs_mane.py"),
+                    "--mane-root", str(mane_root), "--pick-root", str(pick_root),
+                    "--out", str(out)], check=True, capture_output=True)
+    overall = {r["metric"]: r for r in csv.DictReader((out / "overall.tsv").open(), delimiter="\t")}
+    assert overall["plp_unique_variants"]["mane_only"] == "1"
+    assert overall["plp_unique_variants"]["pick"] == "2"
+    assert overall["unique_carriers"]["pick"] == "2"
+    assert overall["unique_hemizygous_carriers"]["pick"] == "1"
+    genes = {r["gene"]: r for r in csv.DictReader((out / "per_gene.tsv").open(), delimiter="\t")}
+    assert genes["GNOMANE"]["plp_variants_delta"] == "1"
+    assert genes["GNOMANE"]["hemi_carriers_pick"] == "1"
+    only = list(csv.DictReader((out / "plp_only_in_one.tsv").open(), delimiter="\t"))
+    assert [(r["gene"], r["found_in"]) for r in only] == [("GNOMANE", "pick_only")]
+    tiers = {r["pick_tier"]: r["rows"] for r in
+             csv.DictReader((out / "pick_tier_counts.tsv").open(), delimiter="\t")}
+    assert tiers == {"only_candidate": "2"}

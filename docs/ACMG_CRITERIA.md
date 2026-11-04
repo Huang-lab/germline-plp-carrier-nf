@@ -104,3 +104,44 @@ codes appear in `acmg_criteria` joined by `;`.
   term seen across all of that variant's transcript blocks (semicolon-joined),
   so a flagged row can be told apart from truly intergenic space — nothing is
   picked or resolved on your behalf.
+
+## Per-gene pick variant (`build_acmg_carriers_pick.py`)
+
+Same columns as above, plus five, from the same fastVEP output (no re-run).
+Instead of MANE Select only, each (variant, gene) reports the one CSQ block
+that fastVEP's `--pick-allele-gene` would keep, using a port of
+Huang-lab/fastVEP `crates/fastvep-annotate/src/pick.rs`:
+
+| tier | scores (lower wins) |
+|---|---|
+| `mane_select` / `mane_plus_clinical` | 0 if the field is set, else 1 |
+| `canonical` | 0 if `CANONICAL=YES`, else 1 |
+| `appris` | P1..P5 < principal < ALT1/2 < alternative < unrecognised < absent |
+| `tsl` | the TSL number (1 best); absent = 255 |
+| `biotype` | 0 if `protein_coding`, else 1 |
+| `ccds` | 0 if a CCDS ID is set, else 1 |
+| `rank` | most severe SO term's VEP 115 rank (transcript_ablation=1 … ); none = worst |
+
+Default `--pick-order mane_select,mane_plus_clinical,canonical,tsl,biotype,ccds,rank`;
+the VEP-path order `mane_select,canonical,tsl,biotype,rank,ccds` is also
+accepted. Remaining ties go to the lowest transcript ID. Genes are grouped by
+the CSQ `Gene` ID, as fastVEP does.
+
+- **`transcript_id`** — `Feature` of the picked block.
+- **`pick_tier`** — the first tier at which the winner beat the runner-up;
+  `only_candidate` when the gene had one transcript block, `tie_id` when all
+  listed tiers tied and the transcript ID decided.
+- **`is_mane_select`** — 1 if the picked block is the MANE Select transcript.
+- **`acmg_label_mane`** — the MANE Select block's label for that gene, empty
+  if the gene has no MANE Select block at this variant.
+- **`mane_discordant`** — 1 if `is_acmg_PLP` differs between the picked block
+  and the MANE block, 0 if it agrees, empty if there is no MANE block. With any
+  order that starts with `mane_select`, a gene's MANE block always wins, so
+  this is 0 or empty; it only becomes 1 with an order such as `rank,...`.
+- With `--drop-flanking-genes` (default) a gene whose only consequences at the
+  variant are `upstream_gene_variant`/`downstream_gene_variant` gets no row.
+- **`acmg_label = NO_TRANSCRIPT`** — only for a variant with no gene-bearing
+  transcript block at all (intergenic / regulatory only).
+- Carrier `zygosity = hemi` — a haploid non-ref GT (e.g. `1` on male chrX
+  outside the PARs). These were previously dropped; the fix applies to
+  `build_acmg_carriers.py` too.
