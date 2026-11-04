@@ -152,8 +152,16 @@ def _parse_spliceai_info(info: str, spliceai_id: str | None):
 
 
 def _zygosity(gt: str):
-    """(is_carrier, zygosity_label) for a VCF GT string. None for 0/0 or missing."""
+    """Zygosity label ("het", "hom", "hemi") for a VCF GT string; None for
+    hom-ref, missing, or an unparseable call.
+
+    A haploid GT (one allele, e.g. "1" for male chrX outside the PARs, or
+    chrY/chrM) that is non-ref is "hemi"; "0" and "." are None.
+    """
     alleles = gt.replace("|", "/").split("/")
+    if len(alleles) == 1:
+        a = alleles[0]
+        return "hemi" if a not in ("", ".", "0") else None
     if len(alleles) != 2 or "." in alleles:
         return None
     a, b = alleles
