@@ -368,3 +368,97 @@ def test_submit_only_exclude_and_limits(tmp_path):
                           "--exclude", "chr99"], capture_output=True, text=True, env=env,
                          cwd=tmp_path)
     assert bad.returncode == 3
+
+
+FV_HEADERS = [
+    '##INFO=<ID=FV_CLINVAR,Number=.,Type=String,Description="fastVEP ClinVar annotations. '
+    'Format: ALLELE|SIGNIFICANCE|REVIEW_STATUS|PHENOTYPES|VARIANT_CLASS|SO_ACCESSION">',
+    '##INFO=<ID=FV_GNOMAD,Number=.,Type=String,Description="fastVEP gnomAD annotations. Format: '
+    'ALLELE|ALL_AF|ALL_AC|ALL_AN|ALL_HC|AFR_AF|AMR_AF|ASJ_AF|EAS_AF|FIN_AF|MID_AF|NFE_AF|OTH_AF|'
+    'REMAINING_AF|SAS_AF">',
+    '##INFO=<ID=FV_REVEL,Number=.,Type=String,Description="fastVEP REVEL annotations. '
+    'Format: ALLELE|SCORE">',
+    '##INFO=<ID=FV_GNOMAD_GENE,Number=.,Type=String,Description="fastVEP gnomAD gene constraint '
+    'annotations. Format: SYMBOL|PLI|LOEUF|MIS_Z|SYN_Z">',
+]
+EXTRA_FIELDS = FIELDS + "|Protein_position|Amino_acids|CDS_position|FLAGS|Existing_variation"
+
+
+def test_functional_and_fv_columns(tmp_path):
+    """New columns: per-transcript protein fields + is_last_exon from the picked
+    block; ClinVar/gnomAD/REVEL/constraint from FV_* INFO, matched by allele
+    (VCF alt for SNVs, VEP-style '-' for a deletion) and by gene symbol."""
+    def blk2(cons, sym, gene, feat, exon, extra, **kw):
+        b = blk(cons, sym, gene, feat, **kw).split("|")
+        b[7] = exon                       # EXON
+        return "|".join(b + list(extra))
+
+    header = ("##fileformat=VCFv4.2\n"
+              f'##INFO=<ID=CSQ,Number=.,Type=String,Description="fastVEP. Format: {EXTRA_FIELDS}">\n'
+              + "\n".join(FV_HEADERS) + "\n"
+              "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
+    # 1) the real chr21 record's INFO (LIPI), SNV, alt allele "A"
+    snv_csq = blk2("missense_variant", "LIPI", "G_LIPI", "ENST1", "3/10",
+                   ("120", "R/S", "358", "", "rs123"), acmg="VUS", mane="NM_1", allele="A")
+    snv_info = ("AF=1.2e-05;"
+                "FV_CLINVAR=A|Uncertain_significance|criteria_provided%2C_single_submitter|"
+                "not_specified|single_nucleotide_variant|SO%3A0001483;"
+                "FV_GNOMAD=A|1.5e-6|1|627454|0|0.0000565|0|0|0|0|0|0||0|0;"
+                "FV_PHYLOP=A|-0.438;FV_REVEL=A|0.17;FV_OMIM=LIPI|609252|;"
+                "FV_GNOMAD_GENE=LIPI|0.0|1.875|-0.31|-0.71,OTHER|1.0|0.1|0|0;"
+                f"CSQ={snv_csq}")
+    # 2) a deletion in the last exon of a gene with an incomplete CDS; FV
+    #    fields keyed by the VEP-style allele "-"
+    del_csq = blk2("frameshift_variant", "GD", "G_D", "ENST2", "12/12",
+                   ("455", "K/X", "1364", "cds_end_NF", ""), acmg="LP", crit="PVS1",
+                   canonical="YES", impact="HIGH", allele="-")
+    del_info = ("FV_GNOMAD=-|0.001|5|5000|1|0.002|0.0001|0.05|||||||0.003;"
+                "FV_GNOMAD_GENE=GD|0.99|0.2|1|1;"
+                f"CSQ={del_csq}")
+    # 3) FV fields present but for a different allele -> counted as unmatched
+    odd_info = "FV_REVEL=G|0.9;CSQ=" + blk2("missense_variant", "GO", "G_O", "ENST3", "",
+                                             ("", "", "", "", ""), allele="T")
+    body = "\n".join([f"21\t14109002\t.\tC\tA\t.\t.\t{snv_info}",
+                      f"1\t500\t.\tCA\tC\t.\t.\t{del_info}",
+                      f"1\t900\t.\tC\tT\t.\t.\t{odd_info}"]) + "\n"
+    vcf = tmp_path / "fv.vcf"
+    vcf.write_text(header + body, encoding="utf-8")
+    ov, oc = tmp_path / "v.tsv", tmp_path / "c.tsv"
+    res = subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf), "--out-variants",
+                          str(ov), "--out-carriers", str(oc)],
+                         check=True, capture_output=True, text=True)
+    rows = list(csv.DictReader(ov.open(), delimiter="\t"))
+    assert list(rows[0].keys())[:26] == list(P.VARIANT_COLUMNS[:26])  # old columns unchanged
+    by = {r["gene"]: r for r in rows}
+
+    r = by["LIPI"]
+    assert (r["protein_position"], r["amino_acids"], r["cds_position"], r["existing_variation"]) \
+        == ("120", "R/S", "358", "rs123")
+    assert r["is_last_exon"] == "0"
+    assert r["clinvar_significance"] == "Uncertain_significance"
+    assert r["clinvar_review_status"] == "criteria_provided,_single_submitter"
+    assert (r["gnomad_af"], r["gnomad_grpmax_af"], r["gnomad_grpmax_pop"], r["gnomad_hom_count"]) \
+        == ("1.5e-6", "0.0000565", "AFR", "0")
+    assert r["revel"] == "0.17"
+    assert (r["gene_pli"], r["gene_loeuf"]) == ("0.0", "1.875")   # LIPI's, not OTHER's
+
+    r = by["GD"]
+    assert r["is_lof_consequence"] == "1" and r["is_last_exon"] == "1"
+    assert r["flags"] == "cds_end_NF"
+    # ASJ (0.05) is excluded from grpmax; SAS 0.003 is the highest kept group
+    assert (r["gnomad_af"], r["gnomad_grpmax_af"], r["gnomad_grpmax_pop"]) == ("0.001", "0.003", "SAS")
+    assert r["gnomad_hom_count"] == "1" and r["clinvar_significance"] == ""
+    assert (r["gene_pli"], r["gene_loeuf"]) == ("0.99", "0.2")
+
+    r = by["GO"]
+    assert r["revel"] == "" and r["is_last_exon"] == ""
+    assert "had no entry for the alt allele: 1" in res.stderr
+
+
+def test_vep_allele_and_last_exon():
+    assert P.vep_allele("C", "A") == "A"
+    assert P.vep_allele("CA", "C") == "-"
+    assert P.vep_allele("C", "CTT") == "TT"
+    assert P.vep_allele("CAT", "GT") == "GT"           # no shared anchor: unchanged
+    assert P.is_last_exon("12/12") == "1" and P.is_last_exon("11-12/12") == "1"
+    assert P.is_last_exon("3/10") == "0" and P.is_last_exon("") == ""

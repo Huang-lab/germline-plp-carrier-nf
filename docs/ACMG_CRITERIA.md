@@ -145,3 +145,33 @@ the CSQ `Gene` ID, as fastVEP does.
 - Carrier `zygosity = hemi` — a haploid non-ref GT (e.g. `1` on male chrX
   outside the PARs). These were previously dropped; the fix applies to
   `build_acmg_carriers.py` too.
+
+### Functional and population columns (pick variant only)
+
+Appended after `mane_discordant`, so earlier column positions are unchanged.
+
+From the **picked** transcript's CSQ block:
+- **`protein_position`, `amino_acids`, `cds_position`** — e.g. `1443`, `R/*`, `4327`.
+- **`flags`** — `cds_start_NF` / `cds_end_NF` mark a transcript whose coding
+  sequence is incomplete; a pLoF call on one is a common false positive.
+- **`existing_variation`** — known-variant IDs (rsIDs etc.), `&`-joined.
+- **`is_last_exon`** — 1 if `exon` is the transcript's last exon (`N/N`), 0 if
+  not, empty when there is no exon number. A stop in the last exon usually
+  escapes nonsense-mediated decay. Only a partial NMD check: the "last 50 bp
+  of the penultimate exon" part needs exon boundaries the CSQ does not carry.
+
+From fastVEP's supplementary-annotation INFO fields, matched to this record's
+alt allele (the VCF ALT, or VEP's anchor-trimmed spelling for indels, e.g.
+`-` for a deletion). Records where such a field exists but has no entry for
+the alt are counted in the stderr summary.
+- **`clinvar_significance`, `clinvar_review_status`** — from `FV_CLINVAR`;
+  several ClinVar records for one allele are `;`-joined.
+- **`gnomad_af`** — `ALL_AF`; **`gnomad_hom_count`** — `ALL_HC`.
+- **`gnomad_grpmax_af`, `gnomad_grpmax_pop`** — highest AF among AFR, AMR,
+  EAS, NFE and SAS: gnomAD's "grpmax", which leaves out the bottlenecked
+  groups (Ashkenazi Jewish, Finnish, Middle Eastern, Amish, remaining). This
+  is the frequency BA1/BS1 refer to.
+- **`revel`** — `FV_REVEL` score (the maximum if several).
+- **`gene_pli`, `gene_loeuf`** — gnomAD constraint for this row's gene (matched
+  by symbol) from `FV_GNOMAD_GENE`. Low LOEUF (< ~0.6) = loss-of-function
+  intolerant.

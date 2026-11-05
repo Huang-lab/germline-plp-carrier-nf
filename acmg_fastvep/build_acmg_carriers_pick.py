@@ -299,6 +299,13 @@ VARIANT_COLUMNS = (
     "consequence", "impact", "hgvsc", "hgvsp", "exon", "intron", "is_lof_consequence",
     "spliceai_ds_ag", "spliceai_ds_al", "spliceai_ds_dg", "spliceai_ds_dl",
     "transcript_id", "pick_tier", "is_mane_select", "acmg_label_mane", "mane_discordant",
+    # picked transcript (CSQ)
+    "protein_position", "amino_acids", "cds_position", "flags", "existing_variation",
+    "is_last_exon",
+    # variant / gene level (fastVEP FV_* INFO fields)
+    "clinvar_significance", "clinvar_review_status",
+    "gnomad_af", "gnomad_grpmax_af", "gnomad_grpmax_pop", "gnomad_hom_count",
+    "revel", "gene_pli", "gene_loeuf",
 )
 VARIANT_HEADER = "\t".join(VARIANT_COLUMNS) + "\n"
 
@@ -310,12 +317,110 @@ _PICK_FIELDS = {
 }
 
 
+# Extra per-transcript CSQ fields copied from the picked block.
+CSQ_EXTRA_FIELDS = ("Protein_position", "Amino_acids", "CDS_position", "FLAGS",
+                    "Existing_variation")
+# Allele-keyed / gene-keyed INFO fields fastVEP writes from its SA databases.
+FV_INFO_IDS = ("FV_CLINVAR", "FV_GNOMAD", "FV_REVEL", "FV_GNOMAD_GENE")
+# gnomAD v4 "grpmax": highest AF among non-bottlenecked genetic ancestry
+# groups, i.e. excluding Amish, Ashkenazi Jewish, Finnish, Middle Eastern and
+# remaining/other. This is the frequency the ACMG BA1/BS1 rules refer to.
+GNOMAD_GRPMAX_POPS = ("AFR", "AMR", "EAS", "NFE", "SAS")
+
+
+def vep_allele(ref: str, alt: str) -> str:
+    """The VEP/fastVEP spelling of an alt allele: for an indel whose REF and ALT
+    share a first base, that anchor base is dropped ('-' if nothing is left)."""
+    if len(ref) != len(alt) and ref and alt and ref[0] == alt[0]:
+        return alt[1:] or "-"
+    return alt
+
+
+def is_last_exon(exon: str) -> str:
+    """'1' if the CSQ EXON value ('N/M' or 'N-K/M') reaches the last exon, '0'
+    if not, '' when there is no exon number (intronic, splice-site only...)."""
+    if "/" not in exon:
+        return ""
+    num, _, total = exon.partition("/")
+    try:
+        last = max(int(x) for x in num.split("-") if x)
+        return str(int(last == int(total)))
+    except ValueError:
+        return ""
+
+
+def _fv_entries(info_kv: dict, fid: str, formats: dict) -> list[dict]:
+    val = info_kv.get(fid)
+    if not val or fid not in formats:
+        return []
+    fields = formats[fid]
+    return [dict(zip(fields, (decode_csq_field(x) for x in e.split("|"))))
+            for e in val.split(",")]
+
+
+def _float(v: str):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def fv_variant_columns(info_kv: dict, formats: dict, allele_keys: set, stats: dict):
+    """(clinvar_sig, clinvar_review, gnomad_af, grpmax_af, grpmax_pop, hom_count,
+    revel) for this record's alt allele. Empty strings where absent."""
+    out = {}
+    unmatched = False
+    for fid in ("FV_CLINVAR", "FV_GNOMAD", "FV_REVEL"):
+        entries = _fv_entries(info_kv, fid, formats)
+        hit = [e for e in entries if e.get("ALLELE", "") in allele_keys]
+        if entries and not hit:
+            unmatched = True
+        out[fid] = hit
+    if unmatched:
+        stats["fv_allele_unmatched"] += 1
+
+    def uniq(entries, key):
+        seen = []
+        for e in entries:
+            v = e.get(key, "")
+            if v and v not in seen:
+                seen.append(v)
+        return ";".join(seen)
+
+    sig = uniq(out["FV_CLINVAR"], "SIGNIFICANCE")
+    review = uniq(out["FV_CLINVAR"], "REVIEW_STATUS")
+
+    af = grp_af = grp_pop = hom = ""
+    if out["FV_GNOMAD"]:
+        g = out["FV_GNOMAD"][0]
+        af, hom = g.get("ALL_AF", ""), g.get("ALL_HC", "")
+        best = None
+        for pop in GNOMAD_GRPMAX_POPS:
+            x = _float(g.get(f"{pop}_AF", ""))
+            if x is not None and (best is None or x > best[0]):
+                best = (x, pop, g[f"{pop}_AF"])
+        if best is not None:
+            grp_af, grp_pop = best[2], best[1]
+
+    revels = [x for x in (_float(e.get("SCORE")) for e in out["FV_REVEL"]) if x is not None]
+    revel = f"{max(revels):g}" if revels else ""
+    return [sig, review, af, grp_af, grp_pop, hom, revel]
+
+
+def fv_gene_columns(info_kv: dict, formats: dict, symbol: str):
+    """(pLI, LOEUF) for this gene symbol from FV_GNOMAD_GENE."""
+    for e in _fv_entries(info_kv, "FV_GNOMAD_GENE", formats):
+        if e.get("SYMBOL") == symbol:
+            return [e.get("PLI", ""), e.get("LOEUF", "")]
+    return ["", ""]
+
+
 def new_stats() -> dict:
     return {k: 0 for k in (
         "total_variants", "gene_rows", "multi_gene_variants", "no_transcript",
         "flanking_rows_dropped", "flanking_plp_rows_dropped", "variants_all_flanking",
         "mane_rows", "fallback_rows", "mane_discordant_rows", "plp_rows",
-        "multiallelic_records", "carrier_rows", "hemi_calls",
+        "multiallelic_records", "carrier_rows", "hemi_calls", "fv_allele_unmatched",
     )} | {"by_tier": {}}
 
 
@@ -330,6 +435,7 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
                 drop_flanking: bool = True) -> None:
     idx: dict[str, int] = {}
     spliceai_id = None
+    fv_formats: dict[str, tuple] = {}
     samples: list[str] = []
     gt_idx_cache: dict[str, int] = {}
     have_schema = False
@@ -338,6 +444,14 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
         for line in fh:
             if line.startswith("##INFO=<ID=SpliceAI,"):
                 spliceai_id = "SpliceAI"
+                continue
+            if line.startswith("##INFO=<ID=FV_"):
+                fid = line[len("##INFO=<ID="):].split(",", 1)[0]
+                if fid in FV_INFO_IDS:
+                    try:
+                        fv_formats[fid] = parse_csq_format(line).fields
+                    except ValueError:
+                        pass
                 continue
             if line.startswith("##INFO=<ID=CSQ,"):
                 schema = parse_csq_format(line)
@@ -369,11 +483,9 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
             if len(parts) < 8:
                 continue
             chrom, pos, _id, ref, alt, _q, _f, info = parts[:8]
-            csq = ""
-            for kv in info.split(";"):
-                if kv.startswith("CSQ="):
-                    csq = kv[4:]
-                    break
+            info_kv = dict(kv.split("=", 1) if "=" in kv else (kv, "")
+                           for kv in info.split(";"))
+            csq = info_kv.get("CSQ", "")
             if not csq:
                 continue
 
@@ -401,8 +513,11 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
                 out_variants.write("\t".join(row) + "\n")
                 continue
 
+            allele_keys = {alt, vep_allele(ref, alt)}
             spliceai_by_allele = _parse_spliceai_info(info, spliceai_id)
-            ds = spliceai_by_allele.get(alt, ("", "", "", ""))
+            ds = next((spliceai_by_allele[a] for a in (alt, vep_allele(ref, alt))
+                       if a in spliceai_by_allele), ("", "", "", ""))
+            fv_variant = fv_variant_columns(info_kv, fv_formats, allele_keys, stats)
 
             rows_written = 0
             plp_genes: list[str] = []
@@ -437,7 +552,10 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
                        func["EXON"], func["INTRON"], str(_is_lof(func["Consequence"])),
                        ds[0], ds[1], ds[2], ds[3],
                        picked.feature, tier, str(int(picked.is_mane_select)),
-                       label_mane, discordant_s]
+                       label_mane, discordant_s,
+                       *(_field(picked.f, idx.get(n, -1)) for n in CSQ_EXTRA_FIELDS),
+                       is_last_exon(func["EXON"]),
+                       *fv_variant, *fv_gene_columns(info_kv, fv_formats, picked.symbol)]
                 out_variants.write("\t".join(row) + "\n")
                 rows_written += 1
                 stats["gene_rows"] += 1
@@ -496,7 +614,9 @@ def format_summary(stats: dict, order: list[str], drop_flanking: bool) -> str:
         f"{stats['variants_all_flanking']}\n"
         f"  {NO_TRANSCRIPT_SENTINEL} (no gene at all): {stats['no_transcript']}\n"
         f"  P/LP rows: {stats['plp_rows']}; mane_discordant rows: {stats['mane_discordant_rows']}\n"
-        f"  multi-allelic ALT records: {stats['multiallelic_records']}\n"
+        f"  multi-allelic ALT records: {stats['multiallelic_records']}; variants whose "
+        f"FV_CLINVAR/FV_GNOMAD/FV_REVEL had no entry for the alt allele: "
+        f"{stats['fv_allele_unmatched']}\n"
         f"  carrier rows: {stats['carrier_rows']} (hemizygous calls: {stats['hemi_calls']})"
     )
 
