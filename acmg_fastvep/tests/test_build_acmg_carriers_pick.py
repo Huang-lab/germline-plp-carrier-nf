@@ -281,13 +281,26 @@ def test_submit_pick_mode_with_stub_bsub(tmp_path):
         assert "\themi\n" in c
     assert sorted(str(p) for p in batch.rglob("*")) == before
 
-    # pick mode refuses a missing or nested --out-root
-    for extra in ([], ["--out-root", str(batch / "x")]):
+    # pick mode refuses a missing --out-root, the batch root itself, and
+    # anything inside a fastVEP chunk dir; nothing is created when it refuses.
+    for extra in ([], ["--out-root", str(batch)],
+                  ["--out-root", str(batch / "results-fastvep-chr21_v6" / "x")]):
         bad = subprocess.run(["bash", str(submit), "--batch-root", str(batch), "-P", "acc_x",
                               "--mode", "pick", *extra], capture_output=True, text=True,
                              env=env, cwd=tmp_path)
-        assert bad.returncode != 0
+        assert bad.returncode != 0, extra
     assert sorted(str(p) for p in batch.rglob("*")) == before
+
+    # ...but a separate subfolder of the batch root is allowed, and the run
+    # writes only inside it.
+    sub = batch / "results-acmg-pick"
+    ok = subprocess.run(["bash", str(submit), "--batch-root", str(batch), "-P", "acc_x",
+                         "--mode", "pick", "--out-root", str(sub)], capture_output=True,
+                        text=True, env=env, cwd=tmp_path)
+    assert ok.returncode == 0, ok.stderr
+    assert (sub / "results-carriers-pick-chr21_v6" / "acmg_variants.tsv").exists()
+    after = [p for p in sorted(str(p) for p in batch.rglob("*")) if not p.startswith(str(sub))]
+    assert after == before
 
 
 def test_compare_mane_vs_pick(tmp_path):
@@ -309,6 +322,11 @@ def test_compare_mane_vs_pick(tmp_path):
                         "--out-variants", str(d / "acmg_variants.tsv"),
                         "--out-carriers", str(d / "acmg_carriers.tsv")],
                        check=True, capture_output=True)
+    # refuses to write into a MANE result dir
+    bad = subprocess.run([sys.executable, str(HERE.parent / "compare_acmg_pick_vs_mane.py"),
+                          "--mane-root", str(mane_root), "--pick-root", str(pick_root),
+                          "--out", str(md / "cmp")], capture_output=True)
+    assert bad.returncode != 0 and not (md / "cmp").exists()
     out = pick_root / "comparison"
     subprocess.run([sys.executable, str(HERE.parent / "compare_acmg_pick_vs_mane.py"),
                     "--mane-root", str(mane_root), "--pick-root", str(pick_root),

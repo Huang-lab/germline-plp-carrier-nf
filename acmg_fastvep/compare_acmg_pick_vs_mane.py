@@ -101,12 +101,15 @@ def main(argv=None) -> int:
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
 
-    mane_real = os.path.realpath(args.mane_root)
-    out_real = os.path.realpath(args.out)
-    if out_real == mane_real or out_real.startswith(mane_real + os.sep):
-        ap.error("--out must not be inside --mane-root")
-
     mane_dirs = _chr_dirs(args.mane_root, "results-carriers-")
+    # The MANE-only result dirs are read-only here. A separate subfolder of
+    # --mane-root (e.g. <batch>/results-acmg-pick/comparison) is fine.
+    out_real = os.path.realpath(args.out)
+    for protected in [args.mane_root, *mane_dirs.values()]:
+        pr = os.path.realpath(protected)
+        if out_real == pr or (protected != args.mane_root and out_real.startswith(pr + os.sep)):
+            ap.error(f"--out must not be {protected} or inside a MANE result dir")
+
     pick_dirs = _chr_dirs(args.pick_root, "results-carriers-pick-")
     common = sorted(set(mane_dirs) & set(pick_dirs))
     for name, only in (("MANE", set(mane_dirs) - set(pick_dirs)),

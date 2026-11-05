@@ -31,8 +31,10 @@ Options:
                         on its own with a longer --wall-time.
   --out-root <dir>      where results-carriers[-pick]-chrN_v6/ dirs, the array
                         manifest and logs/ are written (default: --batch-root
-                        in mane mode; REQUIRED and must lie outside
-                        --batch-root in pick mode, which never writes there)
+                        in mane mode; REQUIRED in pick mode: a folder that is
+                        not --batch-root itself nor inside any of its
+                        results-fastvep-*/results-carriers-* dirs, e.g.
+                        <batch-root>/results-acmg-pick)
   --mode <mane|pick>    mane (default): MANE Select only (build_acmg_carriers.py)
                         pick: per-gene pick fallback (build_acmg_carriers_pick.py)
   --pick-order <s>      pick mode: tier order (default in the script)
@@ -76,11 +78,22 @@ case "$MODE" in
           fi
           OUT_ROOT="${OUT_ROOT:-$BATCH_ROOT}" ;;
     pick) [ -n "$OUT_ROOT" ] || { echo "ERROR: --mode pick needs an explicit --out-root" >&2; exit 2; }
+          # The fastVEP chunk dirs and the MANE-only result dirs are read-only
+          # for a pick run. A separate subfolder of the batch root (e.g.
+          # <batch>/results-acmg-pick) is fine; the batch root itself, or
+          # anything inside those dirs, is not.
           b_real="$(realpath -e "$BATCH_ROOT")"; o_real="$(realpath -m "$OUT_ROOT")"
-          case "$o_real/" in
-              "$b_real"/*) echo "ERROR: --out-root ($OUT_ROOT) is inside --batch-root; the fastVEP" \
-                                "outputs are read-only for this run — pick a separate dir" >&2; exit 3 ;;
-          esac
+          if [ "$o_real" = "$b_real" ]; then
+              echo "ERROR: --out-root is --batch-root itself; use a subfolder such as" \
+                   "$BATCH_ROOT/results-acmg-pick" >&2; exit 3
+          fi
+          for prot in "$b_real"/results-fastvep-* "$b_real"/results-carriers-*; do
+              [ -d "$prot" ] || continue
+              case "$o_real/" in
+                  "$prot"/*) echo "ERROR: --out-root ($OUT_ROOT) is inside $prot, which this run" \
+                                  "must not write to" >&2; exit 3 ;;
+              esac
+          done
           # Fail at submit time, not in 24 array tasks, on a bad order.
           python3 -c 'import sys; sys.path[:0]=[sys.argv[1], sys.argv[1]+"/.."]; import build_acmg_carriers_pick as P; P.parse_pick_order(sys.argv[2] or P.DEFAULT_PICK_ORDER)' \
               "$HERE" "$PICK_ORDER" || { echo "ERROR: bad --pick-order" >&2; exit 2; } ;;
