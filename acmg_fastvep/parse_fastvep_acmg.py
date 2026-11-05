@@ -42,7 +42,12 @@ _BENIGN_PREFIXES = ("BA", "BS", "BP")
 
 
 def _open(path: str):
-    if path.endswith(".gz") or path.endswith(".bgz"):
+    """Open a VCF as text, gzip/bgzip or plain, decided by the file's first two
+    bytes rather than its name: run_fastvep.sh parses the temp file
+    `.<name>.fastvep.vcf.gz.partial`, whose name does not end in `.gz`."""
+    with open(path, "rb") as fh:
+        is_gzip = fh.read(2) == b"\x1f\x8b"
+    if is_gzip:
         return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8")
     return open(path, "r", encoding="utf-8")
 
