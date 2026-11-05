@@ -480,3 +480,47 @@ def test_vep_allele_and_last_exon():
     assert P.vep_allele("CAT", "GT") == "GT"           # no shared anchor: unchanged
     assert P.is_last_exon("12/12") == "1" and P.is_last_exon("11-12/12") == "1"
     assert P.is_last_exon("3/10") == "0" and P.is_last_exon("") == ""
+
+
+def test_extract_gene_carriers(tmp_path):
+    """Carriers of listed genes only, across chromosomes, annotation joined,
+    compound-het count per (person, gene)."""
+    root = tmp_path / "pick"
+    recs = {
+        "chr1_v6": [("1", 100, [blk("stop_gained", "MUTYH", "GM", "ENSTM", "P", "PVS1",
+                                     mane="NM_M", impact="HIGH")], ("0/1", "0/1", "0/0")),
+                    ("1", 200, [blk("frameshift_variant", "MUTYH", "GM", "ENSTM", "LP", "PVS1",
+                                     mane="NM_M", impact="HIGH")], ("0/1", "0/0", "0/0")),
+                    ("1", 300, [blk("stop_gained", "OTHER", "GO", "ENSTO", "P", "PVS1",
+                                     mane="NM_O", impact="HIGH")], ("1/1", "0/0", "0/0"))],
+        "chr17_v6": [("17", 400, [blk("stop_gained", "TP53", "GT", "ENSTT", "P", "PVS1",
+                                       mane="NM_T", impact="HIGH")], ("0/0", "0/0", "1/1"))],
+    }
+    for chrom, rr in recs.items():
+        d = root / f"results-carriers-pick-{chrom}"
+        d.mkdir(parents=True)
+        sub = tmp_path / chrom
+        sub.mkdir()
+        vcf = write_vcf(sub, rr)
+        subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf),
+                        "--out-variants", str(d / "acmg_variants.tsv"),
+                        "--out-carriers", str(d / "acmg_carriers.tsv")],
+                       check=True, capture_output=True)
+    genes = tmp_path / "genes.txt"
+    genes.write_text("# test list\nMUTYH\nTP53, BRCA1\nNOTAGENE\n")
+    out, summ = tmp_path / "carriers.tsv", tmp_path / "summary.tsv"
+    res = subprocess.run([sys.executable, str(HERE.parent / "extract_gene_carriers.py"),
+                          "--pick-root", str(root), "--genes", str(genes), "--out", str(out),
+                          "--out-summary", str(summ)], capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+    rows = list(csv.DictReader(out.open(), delimiter="\t"))
+    got = sorted((r["gene"], r["pos"], r["person_id"], r["n_plp_variants_in_gene"]) for r in rows)
+    assert got == [("MUTYH", "100", "S1", "2"), ("MUTYH", "100", "S2", "1"),
+                   ("MUTYH", "200", "S1", "2"), ("TP53", "400", "S3", "1")]
+    assert rows[0]["acmg_label"] in ("Pathogenic", "Likely_pathogenic")
+    assert "transcript_id" in rows[0] and "gnomad_af" in rows[0]
+    s = {r["gene"]: r for r in csv.DictReader(summ.open(), delimiter="\t")}
+    assert (s["MUTYH"]["plp_variants_with_carriers"], s["MUTYH"]["carriers"],
+            s["MUTYH"]["carriers_2plus_plp_variants"]) == ("2", "2", "1")
+    assert s["TP53"]["hom_carriers"] == "1" and s["BRCA1"]["carriers"] == "0"
+    assert "NOTAGENE" in res.stderr and "BRCA1" in res.stderr
