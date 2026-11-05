@@ -22,9 +22,13 @@ Required:
   --batch-root <dir>   dir containing results-fastvep-chr*_v6/ subdirs
 
 Options:
-  --only <chrspec>      only submit the chromosome dir(s) matching this glob
-                        fragment (e.g. "chr21", "chr21_v6") — for a first test
-                        run before submitting the full array
+  --only <chrspec>      only submit this chromosome. An exact name ("chr1" or
+                        "chr1_v6" -> results-fastvep-chr1_v6/) wins; otherwise
+                        it is a glob fragment, as before. So "chr1" no longer
+                        also matches chr10..chr19.
+  --exclude <chrspec>   leave this chromosome out (exact name, as above);
+                        repeatable. E.g. run the array --exclude chr1 and chr1
+                        on its own with a longer --wall-time.
   --out-root <dir>      where results-carriers[-pick]-chrN_v6/ dirs, the array
                         manifest and logs/ are written (default: --batch-root
                         in mane mode; REQUIRED and must lie outside
@@ -33,7 +37,10 @@ Options:
                         pick: per-gene pick fallback (build_acmg_carriers_pick.py)
   --pick-order <s>      pick mode: tier order (default in the script)
   --keep-flanking-genes pick mode: keep upstream/downstream-only gene rows
-  -j, --jobs <N>        parallel chunk workers per chromosome task (default 4)
+  -n, --cores <N>       cores per chromosome task (default 4, from the task file)
+  -j, --jobs <N>        parallel chunk workers per task (default: --cores)
+  -W, --wall-time <H:MM> LSF run limit per task (default 4:00, from the task
+                        file). chr1 (48 chunks) needs far more than chr21 (6).
   -P, --project <alloc> LSF allocation (default: $MINERVA_ALLOCATION)
   -h, --help
 USAGE
@@ -41,7 +48,7 @@ USAGE
 }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BATCH_ROOT=""; ONLY=""; OUT_ROOT=""; JOBS=4; MODE=mane; PICK_ORDER=""; KEEP_FLANKING=0
+BATCH_ROOT=""; ONLY=""; OUT_ROOT=""; JOBS=""; CORES=""; WALL=""; EXCLUDE=(); MODE=mane; PICK_ORDER=""; KEEP_FLANKING=0
 PROJECT="${MINERVA_ALLOCATION:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -49,6 +56,9 @@ while [ $# -gt 0 ]; do
         --only)       ONLY="$2"; shift 2 ;;
         --out-root)   OUT_ROOT="$2"; shift 2 ;;
         -j|--jobs)    JOBS="$2"; shift 2 ;;
+        -n|--cores)   CORES="$2"; shift 2 ;;
+        -W|--wall-time) WALL="$2"; shift 2 ;;
+        --exclude)    EXCLUDE+=("$2"); shift 2 ;;
         --mode)       MODE="$2"; shift 2 ;;
         --pick-order) PICK_ORDER="$2"; shift 2 ;;
         --keep-flanking-genes) KEEP_FLANKING=1; shift ;;
@@ -80,14 +90,36 @@ mkdir -p "$OUT_ROOT"
 
 # Discover chromosome directories. One glob, no per-chromosome loop of bsub
 # calls — the manifest just records what the array will index into.
+# exact_dir <spec>: results-fastvep-<spec>/ or results-fastvep-<spec>_v6/, if it exists.
+exact_dir() {
+    local c
+    for c in "$BATCH_ROOT/results-fastvep-$1" "$BATCH_ROOT/results-fastvep-${1}_v6"; do
+        if [ -d "$c" ]; then printf '%s/\n' "$c"; return 0; fi
+    done
+    return 1
+}
 shopt -s nullglob
 if [ -n "$ONLY" ]; then
-    dirs=("$BATCH_ROOT"/results-fastvep-*"$ONLY"*/)
+    if d="$(exact_dir "$ONLY")"; then
+        dirs=("$d")
+    else
+        dirs=("$BATCH_ROOT"/results-fastvep-*"$ONLY"*/)
+    fi
 else
     dirs=("$BATCH_ROOT"/results-fastvep-chr*_v6/)
 fi
 shopt -u nullglob
-[ ${#dirs[@]} -gt 0 ] || { echo "ERROR: no results-fastvep-chr*_v6/ dirs found under $BATCH_ROOT (--only=$ONLY)" >&2; exit 3; }
+for x in ${EXCLUDE[@]+"${EXCLUDE[@]}"}; do
+    xd="$(exact_dir "$x")" || { echo "ERROR: --exclude $x: no results-fastvep-$x[_v6]/ under $BATCH_ROOT" >&2; exit 3; }
+    kept=()
+    for d in "${dirs[@]}"; do [ "${d%/}" = "${xd%/}" ] || kept+=("$d"); done
+    dirs=(${kept[@]+"${kept[@]}"})
+done
+[ ${#dirs[@]} -gt 0 ] || { echo "ERROR: no results-fastvep-chr*_v6/ dirs left under $BATCH_ROOT (--only=$ONLY --exclude=${EXCLUDE[*]-})" >&2; exit 3; }
+JOBS="${JOBS:-${CORES:-4}}"
+LIMITS=()
+if [ -n "$CORES" ]; then LIMITS+=(-n "$CORES"); fi
+if [ -n "$WALL" ]; then LIMITS+=(-W "$WALL"); fi
 
 MANIFEST="$OUT_ROOT/.acmg_carriers_manifest.$MODE.$$.txt"
 : > "$MANIFEST"
@@ -103,9 +135,10 @@ mkdir -p logs   # the task's #BSUB -oo/-eo paths are relative to this (submit) d
 # mode options travel only via the environment that "-env all" propagates.
 AC_MANIFEST="$MANIFEST" AC_OUT_ROOT="$OUT_ROOT" AC_JOBS="$JOBS" AC_REPO="$(cd "$HERE/.." && pwd)" \
 AC_MODE="$MODE" AC_PICK_ORDER="$PICK_ORDER" AC_KEEP_FLANKING="$KEEP_FLANKING" \
-    bsub -P "$PROJECT" -J "acmg-carriers-$MODE[1-$N]" \
+    bsub -P "$PROJECT" -J "acmg-carriers-$MODE[1-$N]" ${LIMITS[@]+"${LIMITS[@]}"} \
     -env "all, AC_MANIFEST=$MANIFEST, AC_OUT_ROOT=$OUT_ROOT, AC_JOBS=$JOBS, AC_REPO=$(cd "$HERE/.." && pwd)" \
     < "$HERE/run_acmg_carriers_task.lsf"
 
-echo "[submit] submitted array acmg-carriers-$MODE[1-$N] for $N chromosome(s) -> $OUT_ROOT" >&2
+echo "[submit] submitted array acmg-carriers-$MODE[1-$N] for $N chromosome(s) -> $OUT_ROOT" \
+     "(cores=${CORES:-4 (task default)} jobs=$JOBS wall=${WALL:-4:00 (task default)})" >&2
 echo "[submit] manifest kept at $MANIFEST (do not delete until the array finishes)." >&2

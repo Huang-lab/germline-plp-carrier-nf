@@ -326,3 +326,45 @@ def test_compare_mane_vs_pick(tmp_path):
     tiers = {r["pick_tier"]: r["rows"] for r in
              csv.DictReader((out / "pick_tier_counts.tsv").open(), delimiter="\t")}
     assert tiers == {"only_candidate": "2"}
+
+
+def test_submit_only_exclude_and_limits(tmp_path):
+    """--only chr1 must not also take chr10; --exclude drops a chromosome;
+    -W/-n reach bsub (overriding the task file's #BSUB defaults)."""
+    import os
+    batch = tmp_path / "batch"
+    for c in ("chr1", "chr10", "chr2"):
+        (batch / f"results-fastvep-{c}_v6").mkdir(parents=True)
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    log = tmp_path / "bsub_args"
+    (stub / "bsub").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > {log}\ncat >/dev/null\n')
+    (stub / "bsub").chmod(0o755)
+    env = dict(os.environ, PATH=f"{stub}:{os.environ['PATH']}")
+    submit = HERE.parent / "submit_acmg_carriers.sh"
+
+    def sub(*extra):
+        res = subprocess.run(["bash", str(submit), "--batch-root", str(batch), "-P", "acc_x",
+                              "--mode", "pick", "--out-root", str(tmp_path / "out"), *extra],
+                             capture_output=True, text=True, env=env, cwd=tmp_path)
+        assert res.returncode == 0, res.stderr
+        manifest = max((tmp_path / "out").glob(".acmg_carriers_manifest.*"),
+                       key=lambda p: p.stat().st_mtime_ns)
+        chrs = [Path(l).name for l in manifest.read_text().split()]
+        manifest.unlink()
+        return chrs, log.read_text().split("\n")
+
+    chrs, args = sub("--only", "chr1", "-W", "24:00", "-n", "12")
+    assert chrs == ["results-fastvep-chr1_v6"]
+    assert args[args.index("-W") + 1] == "24:00" and args[args.index("-n") + 1] == "12"
+    assert "AC_JOBS=12" in " ".join(args)
+
+    chrs, args = sub("--exclude", "chr1")
+    assert sorted(chrs) == ["results-fastvep-chr10_v6", "results-fastvep-chr2_v6"]
+    assert "-W" not in args and "-n" not in args
+
+    bad = subprocess.run(["bash", str(submit), "--batch-root", str(batch), "-P", "acc_x",
+                          "--mode", "pick", "--out-root", str(tmp_path / "out"),
+                          "--exclude", "chr99"], capture_output=True, text=True, env=env,
+                         cwd=tmp_path)
+    assert bad.returncode == 3
