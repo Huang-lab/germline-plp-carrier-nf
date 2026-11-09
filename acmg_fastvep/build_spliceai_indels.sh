@@ -34,7 +34,8 @@
 # run it as a job (bsub ... bash <this script> check). If sa-build/sa-convert
 # fails, clear $OUT before rerunning `merge`.
 #
-# Optional overrides: FASTVEP, EXTRACT (extract_gnomad_scores.py), GNOMAD_FMT
+# Optional overrides: FASTVEP, EXTRACT (extract_gnomad_scores.py), PYTHON (an
+# interpreter that starts on compute nodes, e.g. /usr/bin/python3), GNOMAD_FMT
 # (printf format of the per-chr gnomAD file name), WORK, OUT, MERGE_MEM (MB per
 # core for the merge job; size it from the original spliceai sa-build's log).
 set -euo pipefail
@@ -43,6 +44,7 @@ export LC_ALL=C
 FV_ROOT="${FV_ROOT:?set FV_ROOT}"
 FASTVEP="${FASTVEP:-$FV_ROOT/bin/fastvep}"
 EXTRACT="${EXTRACT:-$FV_ROOT/tools/extract_gnomad_scores.py}"
+PYTHON="${PYTHON:-python3}"
 SRC="$FV_ROOT/sa_src"
 SNV="$SRC/spliceai_scores.masked.snv.ensembl_mane_v1.4.grch38.vcf.gz"
 GNOMAD_FMT="${GNOMAD_FMT:-gnomad.exomes.v4.0.sites.chr%s.vcf.bgz}"
@@ -66,7 +68,7 @@ extract() {
         tabix -p vcf "$vcf"
     fi
     mkdir -p "$WORK/chr$c"
-    python3 "$EXTRACT" --chrom "$c" --url "$vcf" --out-dir "$WORK/chr$c"
+    "$PYTHON" "$EXTRACT" --chrom "$c" --url "$vcf" --out-dir "$WORK/chr$c"
     awk 'BEGIN{FS=OFS="\t"} !/^#/ && length($4)!=length($5) {sub(/^chr/,"",$1); print}' \
         "$WORK/chr$c/spliceai_chr$c.vcf" > "$WORK/indels_chr$c.tmp"
     mv "$WORK/indels_chr$c.tmp" "$WORK/indels_chr$c.tsv"
@@ -150,8 +152,10 @@ check() {
 submit() {
     local alloc="${MINERVA_ALLOCATION:?set MINERVA_ALLOCATION}" self jid
     self="$(CDPATH= cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-    command -v tabix >/dev/null && command -v bgzip >/dev/null && command -v python3 >/dev/null \
-        && command -v sha256sum >/dev/null || die "need tabix, bgzip, python3, sha256sum on PATH (module load htslib)"
+    command -v tabix >/dev/null && command -v bgzip >/dev/null && command -v sha256sum >/dev/null \
+        || die "need tabix, bgzip, sha256sum on PATH (module load htslib)"
+    # A module/conda python can start here and still fail on a compute node (libpython not found).
+    "$PYTHON" -c 'import sys; assert sys.version_info >= (3, 6)' || die "$PYTHON does not run; set PYTHON=/usr/bin/python3"
     [ -f "$EXTRACT" ] || die "missing $EXTRACT"
     ! ls "$WORK"/indels_chr*.tsv >/dev/null 2>&1 || die "$WORK has indel files from an earlier run; move them away or use submit-merge"
     mkdir -p "$WORK/logs"
