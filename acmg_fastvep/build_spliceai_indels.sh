@@ -30,6 +30,9 @@
 #   acmg_fastvep/build_spliceai_indels.sh submit
 #   acmg_fastvep/build_spliceai_indels.sh check          # after extract 22 is done
 # Then compare $OUT/spliceai.* against $FV_ROOT/sa_db/spliceai.* and swap by hand.
+# `check` reads up to chr22 of the unindexed 27 GB SNV file unless it has a .tbi:
+# run it as a job (bsub ... bash <this script> check). If sa-build/sa-convert
+# fails, clear $OUT before rerunning `merge`.
 #
 # Optional overrides: FASTVEP, EXTRACT (extract_gnomad_scores.py), GNOMAD_FMT
 # (printf format of the per-chr gnomAD file name), WORK, OUT, MERGE_MEM (MB per
@@ -58,7 +61,7 @@ extract() {
     vcf="$SRC/$(printf "$GNOMAD_FMT" "$c")"
     [ -f "$vcf" ] || die "missing $vcf"
     # A job killed mid-index can leave a partial .tbi; only trust one that lists the contig.
-    if ! tabix -l "$vcf" 2>/dev/null | grep -qx "chr$c"; then
+    if ! grep -qx "chr$c" <(tabix -l "$vcf" 2>/dev/null); then
         rm -f "$vcf.tbi" "$vcf.csi"
         tabix -p vcf "$vcf"
     fi
@@ -76,8 +79,8 @@ merge() {
     local c files=() combined="$WORK/spliceai_snv_plus_gnomad_indel.vcf.gz"
     local snv_fifo="$WORK/snv.fifo" indel_fifo="$WORK/indel.fifo" snv_pid indel_pid
     local live out_real
-    live="$(cd "$FV_ROOT/sa_db" 2>/dev/null && pwd -P || true)"
-    out_real="$(cd "$OUT" 2>/dev/null && pwd -P || true)"
+    live="$(CDPATH= cd "$FV_ROOT/sa_db" 2>/dev/null && pwd -P || true)"
+    out_real="$(CDPATH= cd "$OUT" 2>/dev/null && pwd -P || true)"
     [ -z "$live" ] || [ "$live" != "$out_real" ] || die "OUT is the live sa_db: $OUT"
     ! ls "$OUT"/spliceai.* >/dev/null 2>&1 || die "$OUT already has spliceai.*; move it away first"
     for c in "${CHROMS[@]}"; do
@@ -85,16 +88,19 @@ merge() {
         files+=("$WORK/indels_chr$c.tsv")
     done
     [ -f "$SNV" ] || die "missing $SNV"
+    command -v bgzip >/dev/null || die "need bgzip on PATH (module load htslib)"
 
     # Paths are expanded now: the trap fires after merge() returns and its locals are gone.
-    trap "rm -f $(printf '%q ' "$combined.tmp" "$WORK/merge_counts.tmp" "$snv_fifo" "$indel_fifo")" EXIT
+    # It also kills the producers: if the pipeline fails before sort opens a FIFO,
+    # its writer would otherwise block in open() forever.
+    trap "kill \$(jobs -p) 2>/dev/null || true; rm -f $(printf '%q ' "$combined.tmp" "$WORK/merge_counts.tmp" "$snv_fifo" "$indel_fifo")" EXIT
     rm -f "$snv_fifo" "$indel_fifo"; mkfifo "$snv_fifo" "$indel_fifo"
     # Producers run as background jobs so their exit status can be checked: a
     # truncated read inside <(...) would just end the input early, unnoticed.
     ( set -o pipefail; zcat "$SNV" | awk "$RANK_AWK" ) > "$snv_fifo" & snv_pid=$!
     ( set -o pipefail; cat "${files[@]}" | awk "$RANK_AWK" ) > "$indel_fifo" & indel_pid=$!
 
-    echo "[merge] SNVs + $(cat "${files[@]}" | wc -l) gnomAD indels -> $combined"
+    echo "[merge] SNVs + gnomAD indels -> $combined"
     {
         { zcat "$SNV" || true; } | awk '/^##/{print; next} /^#CHROM/{
             print "##SpliceAI_indels=gnomAD v4.0 exomes spliceai_ds_max (extract_gnomad_scores.py): DS fields carry the max, DP fields are 0"
@@ -126,21 +132,24 @@ merge() {
 check() {
     local g="$WORK/chr22/spliceai_chr22.vcf"
     [ -f "$g" ] || die "missing $g; run: $0 extract 22"
-    { zcat "$SNV" || true; } | awk 'BEGIN{FS="\t"} $1=="22"{print; seen=1; next} seen{exit}' \
-      | awk 'BEGIN{FS="\t"; OFS="\t"}
+    # Illumina chr22 records: straight from the index if there is one, else scan up to chr22.
+    if [ -f "$SNV.tbi" ] || [ -f "$SNV.csi" ]; then tabix "$SNV" 22
+    else { zcat "$SNV" || true; } | awk 'BEGIN{FS="\t"} $1=="22"{print; seen=1; next} seen{exit}'
+    fi | awk 'BEGIN{FS="\t"; OFS="\t"}
           NR==FNR { if (length($4)==length($5)) { split($8, f, "|"); g[$2":"$4":"$5]=f[3]+0 }; next }
+          # Illumina can list one variant once per overlapping gene: keep its max over all of them.
           { k=$2":"$4":"$5; if (!(k in g)) next
-            split($8, f, "|"); m=f[3]; for (i=4;i<=6;i++) if (f[i]+0>m+0) m=f[i]
-            d=g[k]-m; if (d<0) d=-d; n++; s+=d; if (d>0.01) far++
-            if (n<=5) print "  " k, "gnomad=" g[k], "illumina=" m }
-          END { if (!n) { print "no shared chr22 SNVs found"; exit 1 }
-                printf "shared chr22 SNVs: %d  mean |diff|: %.4f  |diff|>0.01: %d (%.2f%%)\n", n, s/n, far, 100*far/n }' \
+            split($8, f, "|"); for (i=3;i<=6;i++) if (!(k in m) || f[i]+0 > m[k]) m[k]=f[i]+0 }
+          END { for (k in m) { d=g[k]-m[k]; if (d<0) d=-d; n++; s+=d; if (d>0.015) far++
+                               if (n<=5) print "  " k, "gnomad=" g[k], "illumina=" m[k] }
+                if (!n) { print "no shared chr22 SNVs found"; exit 1 }
+                printf "shared chr22 SNVs: %d  mean |diff|: %.4f  |diff|>0.015: %d (%.2f%%)\n", n, s/n, far+0, 100*far/n }' \
           <(grep -v '^#' "$g") -
 }
 
 submit() {
     local alloc="${MINERVA_ALLOCATION:?set MINERVA_ALLOCATION}" self jid
-    self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+    self="$(CDPATH= cd "$(dirname "$0")" && pwd)/$(basename "$0")"
     command -v tabix >/dev/null && command -v bgzip >/dev/null && command -v python3 >/dev/null \
         && command -v sha256sum >/dev/null || die "need tabix, bgzip, python3, sha256sum on PATH (module load htslib)"
     [ -f "$EXTRACT" ] || die "missing $EXTRACT"
@@ -158,7 +167,7 @@ submit() {
 # ended(), not done(): merge itself refuses to run if any chromosome's indel file is missing.
 submit_merge() {
     local alloc="${MINERVA_ALLOCATION:?set MINERVA_ALLOCATION}" self dep=()
-    self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+    self="$(CDPATH= cd "$(dirname "$0")" && pwd)/$(basename "$0")"
     [ -n "${1:-}" ] && dep=(-w "ended($1)")
     mkdir -p "$WORK/logs"
     bsub -P "$alloc" -q premium -J spliceai-indel-merge ${dep[@]+"${dep[@]}"} \
