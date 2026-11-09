@@ -84,6 +84,31 @@ n_pathogenic_criteria, n_benign_criteria, is_acmg_PLP`. Per variant the parser k
 the **most severe** call across transcripts (P > LP > VUS > LB > B); `is_acmg_PLP=1`
 for P/LP.
 
+## 4. ACMG carriers from existing fastVEP output (no re-run)
+
+Two post-processors over `*.fastvep.vcf.gz` (fastVEP `--acmg`, no `--pick`);
+column definitions in `docs/ACMG_CRITERIA.md`:
+
+- `build_acmg_carriers.py` — MANE Select block only (`--mode mane`, default).
+- `build_acmg_carriers_pick.py` — one block per (variant, gene) via fastVEP's
+  pick hierarchy, with MANE comparison columns (`--mode pick`).
+
+```bash
+# pilot: one chromosome, output OUTSIDE the batch root
+acmg_fastvep/run_acmg_carriers_chr.sh --mode pick \
+    --in-dir <batch>/results-fastvep-chr21_v6 \
+    -o results-acmg-pick/results-carriers-pick-chr21_v6 -j 4
+cat results-acmg-pick/results-carriers-pick-chr21_v6/summary.txt
+
+# all chromosomes, one LSF array
+acmg_fastvep/submit_acmg_carriers.sh --batch-root <batch> --mode pick \
+    --out-root results-acmg-pick
+
+# compare with the MANE-only results
+python3 acmg_fastvep/compare_acmg_pick_vs_mane.py --mane-root <mane results root> \
+    --pick-root results-acmg-pick --out results-acmg-pick/comparison
+```
+
 ## Notes
 - **Contigs:** feed the pipeline's `*.norm.vcf.gz` (Ensembl `1,2,…`); the GFF3/FASTA
   (and any SA DBs) must be the same GRCh38/Ensembl space.

@@ -234,3 +234,41 @@ def test_carrier_matrix_refuses_mismatched_headers(tmp_path):
 @pytest.mark.parametrize("script", [RUNNER, BATCH, CARRIER])
 def test_scripts_are_syntactically_valid(script):
     assert subprocess.run(["bash", "-n", str(script)]).returncode == 0
+
+
+def test_acmg_run_parses_the_gzipped_partial_and_publishes_both(tmp_path):
+    """--acmg end to end with a fastvep that succeeds.
+
+    run_fastvep.sh hands parse_fastvep_acmg.py the temp file
+    `.<name>.fastvep.vcf.gz.partial`. The parser used to pick gzip by the
+    `.gz` suffix, so it read that gzip stream as text and died with
+    UnicodeDecodeError (byte 0x8b) - after fastVEP had done all the work,
+    which the EXIT trap then deleted. Every --acmg run hit it.
+    """
+    indir, outdir, sa = tmp_path / "norm_qc", tmp_path / "out", tmp_path / "sa"
+    sa.mkdir()
+    _chunk_vcf(indir, "chunk1")
+    gff3 = tmp_path / "genes.gff3"
+    gff3.write_text("##gff-version 3\n")
+    fake = tmp_path / "fake_fastvep_ok"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "##fileformat=VCFv4.2\\n"\n'
+        'printf "##INFO=<ID=CSQ,Number=.,Type=String,Description=\\"fastVEP. '
+        'Format: Allele|SYMBOL|ACMG|ACMG_CRITERIA\\">\\n"\n'
+        'printf "#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\n"\n'
+        'printf "17\\t100\\t.\\tA\\tG\\t.\\tPASS\\tCSQ=G|BRCA1|LP|PVS1\\n"\n'
+    )
+    fake.chmod(0o755)
+    r = subprocess.run(
+        ["bash", str(RUNNER), "-i", str(indir / "chunk1.norm.vcf.gz"), "-o", str(outdir),
+         "--gff3", str(gff3), "--fastvep", str(fake), "--acmg", "--sa-dir", str(sa)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    with gzip.open(outdir / "chunk1.fastvep.vcf.gz", "rt") as fh:
+        assert "CSQ=G|BRCA1|LP|PVS1" in fh.read()
+    rows = (outdir / "chunk1.acmg_plp.tsv").read_text().splitlines()
+    assert rows[0] == ACMG_HEADER
+    assert rows[1].split("\t")[:6] == ["17", "100", "A", "G", "BRCA1", "Likely_pathogenic"]
+    assert not list(outdir.glob(".*partial"))
