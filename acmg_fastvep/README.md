@@ -84,6 +84,17 @@ n_pathogenic_criteria, n_benign_criteria, is_acmg_PLP`. Per variant the parser k
 the **most severe** call across transcripts (P > LP > VUS > LB > B); `is_acmg_PLP=1`
 for P/LP.
 
+### v6 SA DB build: checksums
+The 32 files in the v6 `$FV_ROOT/sa_db` (built 2026-08-19; see the header of
+`build_sa_dbs.sh`) are fingerprinted in `SA_DB_SHA256.txt`. To check a copy or a
+rebuild:
+```bash
+cd "$FV_ROOT/sa_db" && sha256sum -c /path/to/acmg_fastvep/SA_DB_SHA256.txt
+```
+- **SpliceAI is SNV-only.** `spliceai.osa2` is built from
+  `spliceai_scores.masked.snv.ensembl_mane_v1.4.grch38.vcf.gz`; the SpliceAI indel
+  file is not included, so indels get no SpliceAI score.
+
 ## Notes
 - **Contigs:** feed the pipeline's `*.norm.vcf.gz` (Ensembl `1,2,…`); the GFF3/FASTA
   (and any SA DBs) must be the same GRCh38/Ensembl space.
