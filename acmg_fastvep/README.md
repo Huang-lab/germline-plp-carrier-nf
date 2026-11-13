@@ -49,8 +49,12 @@ a `fastvep` found on PATH: they run `$FV_BIN` and check its sha256.
 
 ```bash
 cd germline-plp-carrier-nf            # this repo / worktree
+# Uncompressed Ensembl primary assembly (contigs 1,2,…; 194 sequences), copied into
+# FV_HOME so the install does not depend on the old fastvep/ dir (the one v6 used).
+mkdir -p $FV_HOME/ref
+cp -p /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/variants_PLP/data/fastvep/fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa* $FV_HOME/ref/
 acmg_fastvep/setup_fastvep.sh \
-    --fasta /sc/arion/projects/rg_huangk06/variants_PLP_MSM/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa
+    --fasta $FV_HOME/ref/Homo_sapiens.GRCh38.dna.primary_assembly.fa
 #   [--fv-home <dir>]  [--from-source]  [--allow-path-mismatch]
 ```
 
