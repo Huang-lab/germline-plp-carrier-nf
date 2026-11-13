@@ -13,24 +13,31 @@
 #
 # Submit from the repo root on a Minerva LOGIN node:
 #   export MINERVA_ALLOCATION=acc_<project>
+#   export FV_ENV=$FV_HOME/env.sh        # from setup_fastvep.sh: FV_BIN FV_CACHE FV_SA ...
 #   export FV_IN=<norm_qc dir>           # dir of *.norm.vcf.gz
 #   export FV_OUT=/sc/arion/scratch/$USER/fastvep-out   # big .fastvep.vcf → use scratch
-#   export FV_ROOT=/sc/arion/projects/.../data/fastvep  # has bin/ gff3/ fasta/ sa_db/
 #   export FV_MODE=acmg                  # or 'annotate'
 #   mkdir -p logs
 #   bsub -P "$MINERVA_ALLOCATION" < acmg_fastvep/run_fastvep.lsf
 #
-# Optional overrides: FV_BIN, FV_GFF3, FV_FASTA, FV_SA (else derived from FV_ROOT).
+# No FV_ENV? Then FV_BIN FV_BIN_SHA256 FV_GFF3 FV_FASTA FV_CACHE (and FV_SA for
+# acmg) must all be exported explicitly; nothing is guessed from a directory
+# listing any more. Optional: FV_FORCE=1 passes --force to the batch driver.
 set -euo pipefail
 
+if [ -n "${FV_ENV:-}" ]; then
+    # shellcheck disable=SC1090
+    . "$FV_ENV"
+fi
 : "${FV_IN:?set FV_IN=<dir of *.norm.vcf.gz>}"
 : "${FV_OUT:?set FV_OUT=<output dir, e.g. /sc/arion/scratch/\$USER/fastvep-out>}"
-: "${FV_ROOT:?set FV_ROOT=<fastvep tool root with bin/ gff3/ fasta/ sa_db/>}"
+: "${FV_BIN:?set FV_ENV=<\$FV_HOME/env.sh> (or FV_BIN explicitly)}"
+: "${FV_BIN_SHA256:?set FV_ENV=<\$FV_HOME/env.sh> (or FV_BIN_SHA256 explicitly)}"
+: "${FV_GFF3:?set FV_ENV=<\$FV_HOME/env.sh> (or FV_GFF3 explicitly)}"
+: "${FV_FASTA:?set FV_ENV=<\$FV_HOME/env.sh> (or FV_FASTA explicitly)}"
+: "${FV_CACHE:?set FV_ENV=<\$FV_HOME/env.sh> (or FV_CACHE explicitly)}"
 FV_MODE="${FV_MODE:-acmg}"
-FV_BIN="${FV_BIN:-$FV_ROOT/bin/fastvep}"
-FV_GFF3="${FV_GFF3:-$(ls "$FV_ROOT"/gff3/*.gff3 | head -1)}"
-FV_FASTA="${FV_FASTA:-$(ls "$FV_ROOT"/fasta/*.fa | head -1)}"
-FV_SA="${FV_SA:-$FV_ROOT/sa_db}"
+export FV_BIN_SHA256
 
 # Locate run_fastvep_batch.sh robustly. When submitted via `bsub < run_fastvep.lsf`
 # the script is read from stdin, so $0 is an LSF spool path and dirname $0 is
@@ -43,15 +50,17 @@ done
 [ -n "$HERE" ] || { echo "ERROR: cannot find run_fastvep_batch.sh — submit from the repo root, or set FV_REPO=<repo path>" >&2; exit 3; }
 mkdir -p "$FV_OUT"
 
-args=(--in-dir "$FV_IN" -o "$FV_OUT" --gff3 "$FV_GFF3" --fasta "$FV_FASTA" --hgvs \
-      --fastvep "$FV_BIN" --threads 8)
+args=(--in-dir "$FV_IN" -o "$FV_OUT" --fastvep "$FV_BIN" --gff3 "$FV_GFF3" --fasta "$FV_FASTA"
+      --transcript-cache "$FV_CACHE" --hgvs --threads 8)
 if [ "$FV_MODE" = "acmg" ]; then
+    : "${FV_SA:?set FV_ENV=<\$FV_HOME/env.sh> (or FV_SA explicitly) for FV_MODE=acmg}"
     args+=(--acmg --sa-dir "$FV_SA")
 fi
+[ "${FV_FORCE:-0}" = 1 ] && args+=(--force)
 
 echo "[run_fastvep.lsf] mode=$FV_MODE" >&2
-echo "  bin=$FV_BIN" >&2
-echo "  gff3=$FV_GFF3" >&2
+echo "  bin=$FV_BIN (sha256 $FV_BIN_SHA256)" >&2
+echo "  cache=$FV_CACHE" >&2
 echo "  fasta=$FV_FASTA" >&2
-echo "  sa=$FV_SA  in=$FV_IN  out=$FV_OUT" >&2
+echo "  sa=${FV_SA:-none}  in=$FV_IN  out=$FV_OUT" >&2
 "$HERE/run_fastvep_batch.sh" "${args[@]}"

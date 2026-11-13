@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Standalone fastVEP runner for a SINGLE QC'd VCF (Huang-lab/fastVEP).
+# Standalone fastVEP runner for a SINGLE QC'd VCF (Huang-lab/fastVEP v0.5.0).
 #
 # NOT part of the Nextflow pipeline. Runs after the pipeline's QC step, on the
 # QC'd VCFs it publishes (results/<run>/norm_qc/<chunk>.norm.vcf.gz), so fastVEP
@@ -7,50 +7,68 @@
 # working Nextflow pipeline.
 #
 # Two modes:
-#   * plain annotation (default)  — needs only a GFF3 gene model (+ optional
-#     FASTA for HGVS). No supplementary databases. This is the "just make it run"
-#     path. Emits <name>.fastvep.vcf.
-#   * ACMG (--acmg)               — additionally requires --sa-dir pointing at
-#     fastVEP supplementary DBs (.osa/.oga: gnomAD, ClinVar, REVEL, gene-level;
-#     see fastVEP docs/ACMG_SETUP.md). Emits <name>.fastvep.vcf AND
-#     <name>.acmg_plp.tsv (pipeline acmg_plp.tsv schema) via parse_fastvep_acmg.py.
+#   * plain annotation (default)  — transcript cache + FASTA, no supplementary
+#     databases. Emits <name>.fastvep.vcf.gz.
+#   * ACMG (--acmg)               — additionally reads the sa_db built by
+#     build_sa_dbs.sh and verified by check_sa_db.sh, and runs with
+#     --flag-pick-allele-gene: every transcript's CSQ block is kept and fastVEP
+#     marks its own choice per (allele, gene) with PICK=1, which the carriers
+#     step (build_acmg_carriers_pick.py, fastvep_pick mode) reads instead of
+#     re-deriving a pick. Emits <name>.fastvep.vcf.gz AND <name>.acmg_plp.tsv.
 #
-# Prereqs: `fastvep` on PATH (see setup_fastvep.sh). fastVEP is a native binary —
-# no container / Singularity module needed (unlike the Nextflow steps).
+# Everything comes from env.sh (setup_fastvep.sh) — no PATH lookup, no
+# "first file in the directory" guessing:
+#   FV_ENV=<$FV_HOME/env.sh>   sourced if set; or export these yourself:
+#   FV_BIN FV_BIN_SHA256 FV_GFF3 FV_FASTA FV_CACHE [FV_SA for --acmg]
+# Command-line options override the environment.
+#
+# A chunk FAILS (nothing published) when fastVEP's stderr says the reference
+# stack was not what we think it is — fastVEP itself still exits 0 then:
+#   'incomplete reference stack'           a source of the nine is not loaded
+#   'was not loaded'                       a database file is empty/unopenable
+#   'hold nothing of chromosomes'          gnomAD lacks a chromosome of the gene model
+#   'answered by more than one database'   two databases answer for one source key
+# fastVEP's stderr is kept as <name>.fastvep.stderr.log either way.
 set -euo pipefail
 
 usage() {
     cat >&2 <<'USAGE'
-Usage: run_fastvep.sh -i <qc.vcf[.gz]> -o <outdir> --gff3 <genes.gff3> [options]
+Usage: run_fastvep.sh -i <qc.vcf[.gz]> -o <outdir> [options]
 
 Required:
   -i, --input <vcf>       QC'd VCF (.vcf or .vcf.gz), Ensembl contigs
   -o, --outdir <dir>      output directory (created if absent)
-  --gff3 <gff3>           Ensembl GFF3 gene model
+  plus FV_BIN FV_BIN_SHA256 FV_GFF3 FV_FASTA FV_CACHE (env, or FV_ENV=<env.sh>)
 
-Options:
-  --fasta <fa>            reference FASTA (needed for --hgvs / sequence context)
-  --hgvs                  emit HGVSc/HGVSp (requires --fasta)
-  --pick                  most-severe consequence per variant (smaller output)
-  --transcript-cache <f>  binary transcript cache from `setup_fastvep.sh --build-cache`
-                          (skips re-deriving the transcript index from the GFF3)
-  --acmg                  run ACMG-AMP classification (REQUIRES --sa-dir)
-  --sa-dir <dir>          fastVEP supplementary-annotation DB directory
+Options (each overrides its env variable):
+  --fastvep <path>        fastvep binary                       ($FV_BIN)
+  --gff3 <gff3>           GFF3 the transcript cache was built from, recorded only ($FV_GFF3)
+  --fasta <fa>            reference FASTA                      ($FV_FASTA)
+  --transcript-cache <f>  fastVEP transcript cache, always used ($FV_CACHE)
+  --sa-dir <dir>          supplementary-annotation DB dir (--acmg) ($FV_SA)
+  --acmg                  ACMG-AMP classification, with --flag-pick-allele-gene
   --acmg-config <toml>    ACMG threshold overrides
+  --hgvs                  emit HGVSc/HGVSp (--acmg turns it on anyway)
+  --pick                  plain mode only: one consequence per variant
   --threads <N>           worker threads (exported as RAYON_NUM_THREADS)
-  --fastvep <path>        path to the fastvep binary (default: fastvep, or $FASTVEP)
   -h, --help
 
 Outputs:
-  <outdir>/<name>.fastvep.vcf     annotated VCF (CSQ; ACMG cols filled only with --acmg)
-  <outdir>/<name>.acmg_plp.tsv    per-variant ACMG table (only in --acmg mode)
+  <outdir>/<name>.fastvep.vcf.gz        annotated VCF
+  <outdir>/<name>.acmg_plp.tsv          per-variant ACMG table (--acmg only)
+  <outdir>/<name>.fastvep.provenance    binary/SA hashes this chunk was made with
+  <outdir>/<name>.fastvep.stderr.log    fastVEP's stderr
 USAGE
     exit 2
 }
 
-FASTVEP="${FASTVEP:-fastvep}"
-IN=""; OUTDIR=""; GFF3=""; FASTA=""; SA_DIR=""; ACMG_CONFIG=""; THREADS=""
-TRANSCRIPT_CACHE=""
+if [ -n "${FV_ENV:-}" ]; then
+    # shellcheck disable=SC1090
+    . "$FV_ENV"
+fi
+FASTVEP="${FV_BIN:-}"; GFF3="${FV_GFF3:-}"; FASTA="${FV_FASTA:-}"
+TRANSCRIPT_CACHE="${FV_CACHE:-}"; SA_DIR="${FV_SA:-}"
+IN=""; OUTDIR=""; ACMG_CONFIG=""; THREADS=""
 DO_ACMG=0; DO_HGVS=0; DO_PICK=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -71,16 +89,34 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
 # --- validation ---
-[ -n "$IN" ] && [ -n "$OUTDIR" ] && [ -n "$GFF3" ] || usage
-command -v "$FASTVEP" >/dev/null 2>&1 || { echo "ERROR: fastvep not found ($FASTVEP) — see setup_fastvep.sh" >&2; exit 3; }
-for f in "$IN" "$GFF3"; do [ -s "$f" ] || { echo "ERROR: missing/empty: $f" >&2; exit 3; }; done
-if [ -n "$FASTA" ]; then [ -s "$FASTA" ] || { echo "ERROR: missing/empty FASTA: $FASTA" >&2; exit 3; }; fi
-if [ -n "$TRANSCRIPT_CACHE" ]; then [ -s "$TRANSCRIPT_CACHE" ] || { echo "ERROR: missing/empty --transcript-cache: $TRANSCRIPT_CACHE" >&2; exit 3; }; fi
-if [ "$DO_HGVS" = 1 ] && [ -z "$FASTA" ]; then echo "ERROR: --hgvs requires --fasta" >&2; exit 3; fi
+[ -n "$IN" ] && [ -n "$OUTDIR" ] || usage
+missing=""
+for v in FASTVEP:FV_BIN GFF3:FV_GFF3 FASTA:FV_FASTA TRANSCRIPT_CACHE:FV_CACHE; do
+    eval "val=\${${v%%:*}}"
+    [ -n "$val" ] || missing="$missing ${v#*:}"
+done
+[ -n "${FV_BIN_SHA256:-}" ] || missing="$missing FV_BIN_SHA256"
+[ -z "$missing" ] || { echo "ERROR: not set:$missing — source \$FV_HOME/env.sh (or set FV_ENV)" >&2; exit 3; }
+[ -x "$FASTVEP" ] || { echo "ERROR: fastvep binary not executable: $FASTVEP" >&2; exit 3; }
+for f in "$IN" "$GFF3" "$FASTA" "$TRANSCRIPT_CACHE"; do [ -s "$f" ] || { echo "ERROR: missing/empty: $f" >&2; exit 3; }; done
+BIN_SHA="$(sha256_of "$FASTVEP")"
+[ "$BIN_SHA" = "$FV_BIN_SHA256" ] || {
+    echo "ERROR: sha256($FASTVEP)=$BIN_SHA != FV_BIN_SHA256=$FV_BIN_SHA256 — not the pinned binary" >&2; exit 3; }
+SA_SHA="none"
 if [ "$DO_ACMG" = 1 ]; then
-    [ -n "$SA_DIR" ] || { echo "ERROR: --acmg requires --sa-dir (supplementary DBs)" >&2; exit 3; }
+    [ -n "$SA_DIR" ] || { echo "ERROR: --acmg requires --sa-dir / FV_SA" >&2; exit 3; }
     [ -d "$SA_DIR" ] || { echo "ERROR: --sa-dir not a directory: $SA_DIR" >&2; exit 3; }
+    [ -s "$SA_DIR/SA_DB_SHA256.txt" ] || {
+        echo "ERROR: $SA_DIR has no SA_DB_SHA256.txt — run check_sa_db.sh on it first" >&2; exit 3; }
+    SA_SHA="$(sha256_of "$SA_DIR/SA_DB_SHA256.txt")"
+    # --flag-pick-allele-gene and --pick are one clap group in fastVEP: exclusive.
+    [ "$DO_PICK" = 0 ] || { echo "ERROR: --pick cannot be combined with --acmg (which flags picks instead)" >&2; exit 3; }
 fi
 [ -n "$THREADS" ] && export RAYON_NUM_THREADS="$THREADS"
 
@@ -92,6 +128,8 @@ name="$(basename "$IN")"; name="${name%.gz}"; name="${name%.vcf}"; name="${name%
 # keeps peak disk low and makes writing into space-tight result dirs safe.
 # The parser reads .gz transparently.
 VEPOUT="$OUTDIR/${name}.fastvep.vcf.gz"
+PROVOUT="$OUTDIR/${name}.fastvep.provenance"
+ERRLOG="$OUTDIR/${name}.fastvep.stderr.log"
 
 # Outputs are published by rename, never streamed into their final path.
 #
@@ -109,23 +147,34 @@ VEPOUT="$OUTDIR/${name}.fastvep.vcf.gz"
 # Huang-lab/fastVEP#88, one layer up.
 VEPTMP="$OUTDIR/.${name}.fastvep.vcf.gz.partial"
 ACMGTMP="$OUTDIR/.${name}.acmg_plp.tsv.partial"
+PROVTMP="$OUTDIR/.${name}.fastvep.provenance.partial"
 # Clear stale partials from an earlier killed run, and clean up after this one.
-rm -f "$VEPTMP" "$ACMGTMP"
-trap 'rm -f "$VEPTMP" "$ACMGTMP"' EXIT
+# The provenance goes first on a re-run: outputs without it are never skipped.
+rm -f "$VEPTMP" "$ACMGTMP" "$PROVTMP" "$PROVOUT"
+trap 'rm -f "$VEPTMP" "$ACMGTMP" "$PROVTMP"' EXIT
 
 # --- build the annotate command ---
-cmd=("$FASTVEP" annotate --input "$IN" --output - --gff3 "$GFF3" --output-format vcf)
-[ -n "$FASTA" ]              && cmd+=(--fasta "$FASTA")
+# The transcript cache is the transcript source; fastVEP ignores --gff3 when a
+# cache loads (and warns), so --gff3 is not passed. FV_GFF3 is recorded only.
+cmd=("$FASTVEP" annotate --input "$IN" --output - --output-format vcf
+     --transcript-cache "$TRANSCRIPT_CACHE" --fasta "$FASTA" --no-progress)
 [ "$DO_HGVS" = 1 ]           && cmd+=(--hgvs)
 [ "$DO_PICK" = 1 ]           && cmd+=(--pick)
-[ -n "$TRANSCRIPT_CACHE" ]   && cmd+=(--transcript-cache "$TRANSCRIPT_CACHE")
 if [ "$DO_ACMG" = 1 ]; then
-    cmd+=(--sa-dir "$SA_DIR" --acmg)
+    cmd+=(--sa-dir "$SA_DIR" --acmg --flag-pick-allele-gene)
     [ -n "$ACMG_CONFIG" ] && cmd+=(--acmg-config "$ACMG_CONFIG")
 fi
 
-echo "[fastvep] ${cmd[*]} | gzip > $VEPOUT" >&2
-"${cmd[@]}" | gzip -c > "$VEPTMP"
+echo "[fastvep] ${cmd[*]} 2> $ERRLOG | gzip > $VEPOUT" >&2
+"${cmd[@]}" 2> "$ERRLOG" | gzip -c > "$VEPTMP"
+
+# --- refuse a run whose reference stack was not the one we think ---
+GATED='incomplete reference stack|was not loaded|hold nothing of chromosomes|answered by more than one database'
+if grep -E "$GATED" "$ERRLOG" >&2; then
+    echo "ERROR: fastVEP reported a reference-stack problem (lines above, full log $ERRLOG);" \
+         "not publishing $name" >&2
+    exit 5
+fi
 
 # --- ACMG post-parse (only in --acmg mode) ---
 #
@@ -133,13 +182,32 @@ echo "[fastvep] ${cmd[*]} | gzip > $VEPOUT" >&2
 # driver tests for is never half-present: a parse that dies does not leave a
 # complete VCF next to a truncated TSV.
 if [ "$DO_ACMG" = 1 ]; then
-    ACMGOUT="$OUTDIR/${name}.acmg_plp.tsv"
-    echo "[parse] (pending) -> $ACMGOUT" >&2
+    echo "[parse] (pending) -> $OUTDIR/${name}.acmg_plp.tsv" >&2
     python3 "$HERE/parse_fastvep_acmg.py" --vcf "$VEPTMP" --out "$ACMGTMP"
+fi
+
+{
+    echo "chunk            $name"
+    echo "input            $IN"
+    echo "mode             $([ "$DO_ACMG" = 1 ] && echo acmg || echo annotate)"
+    echo "fastvep_sha256   $BIN_SHA"
+    echo "fastvep_version  $("$FASTVEP" --version 2>/dev/null || echo unknown)"
+    echo "sa_db_sha256     $SA_SHA"
+    echo "sa_dir           ${SA_DIR:-none}"
+    echo "transcript_cache $TRANSCRIPT_CACHE"
+    echo "fasta            $FASTA"
+    echo "command          ${cmd[*]}"
+    echo "date_utc         $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "lsb_jobid        ${LSB_JOBID:-}"
+} > "$PROVTMP"
+
+if [ "$DO_ACMG" = 1 ]; then
     mv -f "$VEPTMP" "$VEPOUT"
-    mv -f "$ACMGTMP" "$ACMGOUT"
-    echo "[done] $VEPOUT  $ACMGOUT" >&2
+    mv -f "$ACMGTMP" "$OUTDIR/${name}.acmg_plp.tsv"
+    mv -f "$PROVTMP" "$PROVOUT"
+    echo "[done] $VEPOUT  $OUTDIR/${name}.acmg_plp.tsv" >&2
 else
     mv -f "$VEPTMP" "$VEPOUT"
+    mv -f "$PROVTMP" "$PROVOUT"
     echo "[done] $VEPOUT" >&2
 fi
