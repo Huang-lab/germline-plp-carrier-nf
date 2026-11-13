@@ -1,129 +1,249 @@
-# acmg_fastvep — standalone fastVEP annotation (and ACMG) on QC'd VCFs
+# acmg_fastvep — standalone fastVEP v0.5.0 ACMG on QC'd VCFs (runbook)
 
-Run **[fastVEP](https://github.com/Huang-lab/fastVEP)** (a Rust VEP reimplementation)
-on the VCFs the Nextflow pipeline QC-normalizes — **outside** the pipeline, as plain
-scripts. Two modes:
+Run **[fastVEP](https://github.com/Huang-lab/fastVEP)** v0.5.0 with ACMG-AMP
+classification on the VCFs the Nextflow pipeline QC-normalizes
+(`results-chrN/norm_qc/<chunk>.norm.vcf.gz`), **outside** `main.nf`, as plain
+scripts and LSF jobs. fastVEP is a native binary: no container, no `module load`
+for fastVEP itself (samtools/htslib are needed for setup and fetching only).
 
-| Mode | Flag | Needs | Output |
-|---|---|---|---|
-| **Plain annotation** (default) | — | a GFF3 (+ FASTA for HGVS) | `<name>.fastvep.vcf` (CSQ: consequence, gene, HGVS, …) |
-| **ACMG-AMP P/LP** | `--acmg` | GFF3 + FASTA + `--sa-dir` (supplementary DBs) | above **plus** `<name>.acmg_plp.tsv` (pipeline schema) |
+Everything is pinned. One versioned directory holds the binary, the fastVEP
+source at the tag (for its helper scripts), the gene model, the transcript cache,
+the downloaded sources and the built databases; every job reads it through one
+`env.sh`, and every output records the hashes it was made with.
 
-**Why standalone:** it runs on the pipeline's already-published QC'd VCFs
-(`results/<run>/norm_qc/<chunk>.norm.vcf.gz` — Ensembl contigs, PASS-only,
-GT-masked), so fastVEP sees exactly the variants the ClinVar path does, without
-touching `main.nf`. fastVEP is a native binary — **no Singularity/container or
-`module load` needed** (unlike the Nextflow steps).
+```
+$FV_HOME   (default /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/variants_PLP/data/fastvep-v0.5.0)
+├── bin/fastvep                 v0.5.0 release binary (sha256 in env.sh / fastvep.provenance)
+├── src/                        fastVEP @ v0.5.0 (19a159f9): scripts/, analysis/.../sa_sources/
+├── ref/                        Homo_sapiens.GRCh38.115.gff3 + .fastvep.cache
+├── sa_src/                     downloads + SOURCES.tsv (url, date, size, sha256)
+├── sa_db/                      the 100 databases, each with .done; SA_DB_SHA256.txt, SA_DB_MANIFEST.tsv
+├── fastvep.provenance          tag, commit, tarball + binary sha256, --version, glibc, host
+└── env.sh                      FV_HOME FV_BIN FV_BIN_SHA256 FV_GFF3 FV_FASTA FV_CACHE FV_SA FV_SRC
+```
 
-Plain annotation runs with **only a GFF3** — no gnomAD/ClinVar/REVEL downloads — so
-you can prove fastVEP works on your data today, then layer ACMG on later.
+The old install (fastvep 0.3.0 on PATH at
+`/sc/arion/projects/rg_huangk06/variants_PLP_MSM/tools/bin/fastvep`, databases under
+`.../variants_PLP/data/fastvep`) is not touched and not used. The scripts never run
+a `fastvep` found on PATH: they run `$FV_BIN` and check its sha256.
 
 ## Files
-- `setup_fastvep.sh` — one-time: build `fastvep` + fetch the Ensembl GRCh38 GFF3.
-- `run_fastvep.sh` — annotate one VCF (plain, or `--acmg`). **Main entry point.**
-- `run_fastvep_batch.sh` — run over a whole `norm_qc/` directory (local or one
-  `bsub` per chunk); writes a chunk→status manifest.
-- `run_fastvep_acmg.sh` — back-compat shim = `run_fastvep.sh --acmg`.
-- `parse_fastvep_acmg.py` — CSQ `ACMG`/`ACMG_CRITERIA` → `acmg_plp.tsv` (used in
-  `--acmg` mode). Reuses `plp_rules/csq.py`.
 
-## 1. One-time setup
+| File | Runs on | What |
+|---|---|---|
+| `setup_fastvep.sh` | login | install binary + source tree, GFF3, FASTA index; cache via bsub; write `env.sh` |
+| `fetch_sa_sources.sh` | login | download and verify every source into `sa_src/` |
+| `build_sa_dbs.sh` / `build_sa_dbs.lsf` | compute | build `sa_db/` (`--single` job + `--chrom` array) |
+| `check_sa_db.sh` | compute (full) / anywhere (`--quick`) | exact file set, `check_acmg_stack.py`, seal with SA_DB_SHA256.txt |
+| `run_fastvep.sh` | compute | annotate one chunk; `--acmg` adds `--flag-pick-allele-gene` |
+| `run_fastvep_batch.sh` / `run_fastvep.lsf` | compute | all chunks of a `norm_qc/` dir, with provenance |
+| `parse_fastvep_acmg.py` | (called) | CSQ → `<chunk>.acmg_plp.tsv` (most severe call per variant, pipeline schema) |
+| `build_acmg_carriers_pick.py` | (called) | per (allele, gene) row + carriers; default `--selection fastvep_pick` |
+| `run_acmg_carriers_chr.sh` | compute | carriers for one chromosome dir (default `--mode fastvep_pick`) |
+| `compare_acmg_pick_vs_mane.py` | anywhere | MANE-only vs pick results |
+| `extract_gene_carriers.py` | anywhere | carriers of a gene list across chromosomes |
+| `build_acmg_carriers.py` | (called) | MANE Select only (`--mode mane`), for v6 comparisons |
+
+## 0. Setup (login node, once)
+
 ```bash
-# reuse the SAME GRCh38 FASTA the pipeline uses (from params/msm.local.yaml)
+cd germline-plp-carrier-nf            # this repo / worktree
 acmg_fastvep/setup_fastvep.sh \
-  --refdir /sc/arion/work/$USER/fastvep-refs \
-  --fasta  /sc/arion/projects/rg_huangk06/variants_PLP_MSM/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa
-
-# it prints the exact FASTVEP / GFF3 / FASTA exports to reuse below.
-```
-`--skip-build` if `fastvep` is already on PATH; `--build-cache` to pre-build the
-transcript cache (otherwise auto-built next to the GFF3 on first run).
-
-## 2. Plain annotation (the "just make it run" path)
-One chunk:
-```bash
-export GFF3=/sc/arion/work/$USER/fastvep-refs/Homo_sapiens.GRCh38.115.gff3
-export FASTA=/sc/arion/projects/rg_huangk06/variants_PLP_MSM/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa
-
-acmg_fastvep/run_fastvep.sh \
-  -i  results-chr1/norm_qc/<chunk>.norm.vcf.gz \
-  -o  results-fastvep \
-  --gff3 "$GFF3" --fasta "$FASTA" --hgvs
-# -> results-fastvep/<chunk>.fastvep.vcf
-```
-All chunks in a run (local, sequential):
-```bash
-acmg_fastvep/run_fastvep_batch.sh \
-  --in-dir results-chr1/norm_qc -o results-fastvep \
-  --gff3 "$GFF3" --fasta "$FASTA" --hgvs
-```
-Or one LSF job per chunk (fastVEP is multithreaded):
-```bash
-acmg_fastvep/run_fastvep_batch.sh \
-  --in-dir results-chr1/norm_qc -o results-fastvep \
-  --gff3 "$GFF3" --fasta "$FASTA" --hgvs \
-  --lsf -P "$MINERVA_ALLOCATION" --threads 4
-# batch_manifest.tsv records chunk -> ok/FAILED/submitted (no silent drops).
+    --fasta /sc/arion/projects/rg_huangk06/variants_PLP_MSM/refs/vep_fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa
+#   [--fv-home <dir>]  [--from-source]  [--allow-path-mismatch]
 ```
 
-## 3. ACMG mode (later — needs supplementary DBs)
-Build the DBs once per fastVEP `docs/ACMG_SETUP.md` (gnomAD v4, ClinVar — pin the
-same release as the ClinVar pipeline — REVEL, gene-level), each via
-`fastvep sa-build --source <s> -i <download> -o <SA_DIR>/<s> --assembly GRCh38`
-(`sa-build` is a **converter, not a downloader** — download the source first, or the
-`.osa` will be empty). Then add `--acmg --sa-dir`:
-```bash
-acmg_fastvep/run_fastvep.sh \
-  -i results-chr1/norm_qc/<chunk>.norm.vcf.gz -o results-fastvep-acmg \
-  --gff3 "$GFF3" --fasta "$FASTA" --acmg --sa-dir /sc/arion/work/$USER/fastvep_sa
-# -> <chunk>.fastvep.vcf  AND  <chunk>.acmg_plp.tsv
-```
-`acmg_plp.tsv` columns (identical to the pipeline's, so it is drop-in for the carrier
-matrix later): `chr, pos, ref, alt, gene, acmg_label, acmg_criteria,
-n_pathogenic_criteria, n_benign_criteria, is_acmg_PLP`. Per variant the parser keeps
-the **most severe** call across transcripts (P > LP > VUS > LB > B); `is_acmg_PLP=1`
-for P/LP.
+* Downloads `fastVEP-v0.5.0-x86_64-unknown-linux-gnu.tar.gz`, checks its sha256
+  (`3b081b9e…ce82`), installs `bin/fastvep` (built for glibc ≥ 2.34; Minerva has
+  2.34). `--from-source` builds the tag with `cargo build --release --locked`
+  instead. Either way `src/` is cloned at the tag and its commit asserted.
+* If a different `fastvep` is first on PATH (the 0.3.0 one is), setup **stops**
+  and says so. Take it off PATH, or pass `--allow-path-mismatch` once you have
+  read why (jobs use `$FV_BIN`; only hand-typed `fastvep` would get the old one).
+* The transcript cache needs ~16 GB, so setup prints a `bsub ... --cache-only`
+  command instead of building it on the login node. Submit it, wait for it.
+  (`--build-cache` builds it in place, e.g. in an interactive compute session.)
 
-## 4. ACMG carriers from existing fastVEP output (no re-run)
+Then, in every shell and job: `source $FV_HOME/env.sh` (jobs: `export FV_ENV=$FV_HOME/env.sh`).
 
-Two post-processors over `*.fastvep.vcf.gz` (fastVEP `--acmg`, no `--pick`);
-column definitions in `docs/ACMG_CRITERIA.md`:
-
-- `build_acmg_carriers.py` — MANE Select block only (`--mode mane`, default).
-- `build_acmg_carriers_pick.py` — one block per (variant, gene) via fastVEP's
-  pick hierarchy, with MANE comparison columns (`--mode pick`).
+## 1. Fetch the sources (login node)
 
 ```bash
-# pilot: one chromosome, output OUTSIDE the batch root
-acmg_fastvep/run_acmg_carriers_chr.sh --mode pick \
-    --in-dir <batch>/results-fastvep-chr21_v6 \
-    -o results-acmg-pick/results-carriers-pick-chr21_v6 -j 4
-cat results-acmg-pick/results-carriers-pick-chr21_v6/summary.txt
-
-# all chromosomes, one LSF array
-acmg_fastvep/submit_acmg_carriers.sh --batch-root <batch> --mode pick \
-    --out-root results-acmg-pick
-
-# compare with the MANE-only results
-python3 acmg_fastvep/compare_acmg_pick_vs_mane.py --mane-root <mane results root> \
-    --pick-root results-acmg-pick --out results-acmg-pick/comparison
+source $FV_HOME/env.sh
+acmg_fastvep/fetch_sa_sources.sh --clinvar-date 20261109    # pin a weekly ClinVar; omit for the latest
 ```
+
+ClinVar VCF (md5 + `gzip -t` + AF_EXAC header), `variant_summary.txt.gz`,
+**gnomAD v4.1 exomes** chr1–22, X, Y (~198 GB; BGZF EOF block + `tabix -l`;
+`--full-check` adds `bgzip -t`), constraint metrics, REVEL v1.3 (split per
+chromosome), **ClinGen Gene-Disease Validity** (dated by download day), UCSC rmsk.
+Resumable; re-run after an interruption. `--skip-gnomad`, `--chroms "21 22"`.
+OMIM is opt-in only: `--omim-genemap2 /path/licensed/genemap2.txt`.
+Result: `sa_src/SOURCES.tsv`.
+
+## 2. Build the databases (compute: one array + one job)
+
+```bash
+export MINERVA_ALLOCATION=acc_<project> FV_ENV=$FV_HOME/env.sh
+mkdir -p logs
+# per chromosome: index 1-22 -> chr1-22, 23 -> X, 24 -> Y. 1 core, 8 GB, 4 h each.
+bsub -P "$MINERVA_ALLOCATION" < acmg_fastvep/build_sa_dbs.lsf
+# whole-genome databases: 1 core, 16 GB, 2 h.
+FV_SA_MODE=single bsub -P "$MINERVA_ALLOCATION" -J fv050-sa-single \
+    -R "rusage[mem=16000] span[hosts=1]" -W 2:00 \
+    -oo logs/fv050-sa-single.%J.out -eo logs/fv050-sa-single.%J.err \
+    < acmg_fastvep/build_sa_dbs.lsf
+```
+
+Exactly as v0.5.0 `docs/ACMG_SETUP.md`: `gnomad_chrN`, `spliceai_chrN` and
+`phylop_chrN` (SpliceAI and PhyloP distilled from the same gnomAD file by
+`scripts/extract_gnomad_scores.py`) with `--chunk-bits 16`; `revel_chrN` (no Y:
+REVEL has none); `clinvar`; `clinvar_protein` from `variant_summary`;
+`gnomad_genes`; `omim` from ClinGen via `clingen_gdv_to_oga.py` (`FV_SA_ARGS=--use-omim`
+for licensed OMIM); `repeatmasker` (`--source custom_bed --name repeatmasker`).
+`sa-build --format auto` writes `.osa2` for every allele-level source (clinvar and
+revel included), `.oga` gene-level, `.osi` for RepeatMasker.
+
+A database reaches `sa_db/` only after `sa-build` exits 0, then gets `<db>.done`;
+re-submitting skips anything with both. Never `--allow-empty`. Logs:
+`$FV_HOME/sa_build_logs/`. To reclaim the 198 GB once a chromosome is built:
+`FV_SA_ARGS=--delete-gnomad-src` on the array (deletes only after gnomad, spliceai
+and phylop of that chromosome all have `.done`).
+
+**Defaults that matter:** ClinGen GDV, not OMIM, behind the `omim` key. gnomAD
+v4.1 **exomes**. **Never put joint or genomes gnomAD databases in the same
+sa_db**: fastVEP keeps one `gnomad` answer per allele (the database sorting
+last), so mixing silently swaps frequencies. `check_sa_db.sh` refuses it.
+
+## 3. Check and seal (compute, once per build)
+
+```bash
+export FV_ENV=$FV_HOME/env.sh        # check_sa_db.sh sources it; bsub passes the env on
+bsub -P "$MINERVA_ALLOCATION" -J fv050-sa-check -n 1 -R "rusage[mem=16000]" -W 1:00 \
+    -oo logs/fv050-sa-check.%J.out -eo logs/fv050-sa-check.%J.err \
+    acmg_fastvep/check_sa_db.sh
+```
+
+Fails unless `sa_db/` holds exactly the 100 expected databases, each with
+`.done`, and nothing else a fastVEP run would load; every gnomAD database came from
+v4.1 exomes; v0.5.0 `scripts/check_acmg_stack.py` sees all nine sources answer;
+and the ClinGen source knows BRCA1, BRCA2, TP53, PTEN, MYH7. Only then it writes
+`SA_DB_SHA256.txt` + `SA_DB_MANIFEST.tsv`. Every run checks `--quick` against
+that manifest first, and records `sha256(SA_DB_SHA256.txt)` as its `sa_db_sha256`.
+
+## 4. chr21 smoke test
+
+```bash
+export FV_ENV=$FV_HOME/env.sh FV_MODE=acmg
+export FV_IN=<batch>/results-chr21/norm_qc  FV_OUT=<batch>/results-fastvep-chr21_fv050
+bsub -P "$MINERVA_ALLOCATION" -J fv050-acmg-chr21 < acmg_fastvep/run_fastvep.lsf
+```
+
+What to verify before anything else runs:
+
+1. **No gated warnings.** A chunk whose fastVEP stderr says `incomplete reference
+   stack`, `was not loaded`, `hold nothing of chromosomes` or `answered by more
+   than one database` fails and publishes nothing, so: every line of
+   `$FV_OUT/batch_manifest.tsv` is `ok`, and
+   `grep -lE 'incomplete reference stack|was not loaded|hold nothing|more than one database' $FV_OUT/*.fastvep.stderr.log`
+   prints nothing.
+2. **CSQ fields.** `zcat $FV_OUT/<chunk>.fastvep.vcf.gz | grep -m1 '^##INFO=<ID=CSQ' | sed 's/.*Format: //; s/">$//' | tr '|' '\n' | grep -xcE 'MANE_SELECT|ACMG|ACMG_CRITERIA|ACMG_DISORDERS|PICK'`
+   prints `5` (ACMG_DISORDERS is the last field, PICK follows FLAGS).
+3. **Exactly one PICK=1 per allele + gene.** Run the carriers step (§5); its
+   `summary.txt` must say `with no PICK=1: 0; with more than one: 0`. Anything
+   else is listed on stderr (`chunks.stderr.log`) and those rows are flagged
+   `NO_PICK_FLAG` / `MULTIPLE_PICK_FLAGS`, never resolved by a pick of our own.
+4. **Provenance.** `$FV_OUT/fastvep_run_provenance.txt` names the binary sha256 and
+   version (0.5.0), cache sha256, FASTA, `sa_db_sha256`, the pipeline git rev and
+   LSB_JOBID; each chunk has `<chunk>.fastvep.provenance` with the same hashes.
+
+## 5. Carriers and the NO_MANE / pick comparison on chr21
+
+```bash
+acmg_fastvep/run_acmg_carriers_chr.sh --mode fastvep_pick -j 4 \
+    --in-dir <batch>/results-fastvep-chr21_fv050 \
+    -o <batch>/results-carriers-fastvep_pick-chr21_fv050
+cat <batch>/results-carriers-fastvep_pick-chr21_fv050/summary.txt
+```
+
+Each (variant, gene) row is the block fastVEP itself flagged `PICK=1` (its
+default pick order: mane_select, mane_plus_clinical, canonical, appris, tsl,
+biotype, ccds, rank); `acmg_label_mane` is the MANE Select block's call or
+`NO_MANE_TRANSCRIPT`; `mane_discordant=1` where the two disagree on P/LP;
+`acmg_disorders` carries v0.5.0's per-inheritance-mode calls.
+
+Compare on chr21, before the full run:
+
+```bash
+# fv050 fastvep_pick vs the v6 MANE-only result (different prefixes and suffixes)
+python3 acmg_fastvep/compare_acmg_pick_vs_mane.py \
+    --mane-root <v6 MANE results root> --pick-root <batch> \
+    --pick-prefix results-carriers-fastvep_pick- --strip-dir-suffix \
+    --out <batch>/comparison-fv050-chr21
+# how many rows have no MANE transcript, and how many of them are P/LP
+awk -F'\t' 'NR>1 && $25=="NO_MANE_TRANSCRIPT" {n++; p+=($10==1)} END {print n+0" rows, "p+0" P/LP"}' \
+    <batch>/results-carriers-fastvep_pick-chr21_fv050/acmg_variants.tsv
+# one-time: does the DEPRECATED Python pick port choose the same transcripts on the same output?
+acmg_fastvep/run_acmg_carriers_chr.sh --mode pick -j 4 \
+    --in-dir <batch>/results-fastvep-chr21_fv050 -o <scratch>/results-carriers-pick-chr21_fv050
+```
+
+`pick_tier_counts.tsv`, `mane_discordant_plp.tsv` and `plp_only_in_one.tsv` in
+the comparison dir are what to read. **Do not change the thresholds in
+`docs/ACMG_CRITERIA.md` until the chr21 comparison has been reviewed.**
+
+## 6. Full run
+
+From the MSM repo: `minerva_jobs/submit_fastvep_fv050_all_chr.sh` submits, per
+chromosome, `run_fastvep.lsf` → `results-fastvep-chrN_fv050/` and, when it is
+done, the carriers job → `results-carriers-fastvep_pick-chrN_fv050/` (job names
+`fv050-*`). Or all chromosomes' carriers as one array:
+
+```bash
+acmg_fastvep/submit_acmg_carriers.sh --batch-root <batch> --dir-suffix _fv050 \
+    --mode fastvep_pick --out-root <batch>/results-acmg-fv050
+```
+
+Re-running the batch skips a finished chunk only if its provenance matches the
+current binary and sa_db; output made with anything else is refused (`--force` /
+`FV_FORCE=1` redoes it). Use a fresh output dir per sa_db build.
+
+### Gene panel
+
+The panel comes from the MSM repo, `scripts/gene_panel.py` (`GENE_PANEL`, the
+single source of truth). Do not hard-code it here or in job scripts:
+
+```bash
+python3 -c 'import sys; sys.path.insert(0, "<MSM repo>/scripts"); from gene_panel import GENE_PANEL; print("\n".join(GENE_PANEL))' > panel_genes.txt
+python3 acmg_fastvep/extract_gene_carriers.py --pick-root <batch> \
+    --prefix results-carriers-fastvep_pick- --genes panel_genes.txt \
+    --out panel_carriers.tsv --out-summary panel_summary.tsv
+```
+
+## Plain annotation (no ACMG)
+
+`run_fastvep.sh -i <chunk> -o <dir>` without `--acmg` needs only env.sh (binary,
+cache, FASTA): `<chunk>.fastvep.vcf.gz`. `--pick` is allowed here only (it and
+`--flag-pick-allele-gene` are one exclusive option group in fastVEP).
 
 ## Notes
-- **Contigs:** feed the pipeline's `*.norm.vcf.gz` (Ensembl `1,2,…`); the GFF3/FASTA
-  (and any SA DBs) must be the same GRCh38/Ensembl space.
-- The CSQ `ACMG`/`ACMG_CRITERIA` columns always appear in the header but are only
-  *filled* when `--acmg` is passed.
-- **Later integration:** because `acmg_plp.tsv` matches the pipeline schema, folding
-  this into `main.nf` = a module that runs `run_fastvep.sh --acmg` and feeds the TSV
-  into `CARRIER_GT`/`CARRIER_MATRIX` alongside the ClinVar table.
+
+* **Contigs:** the pipeline's `*.norm.vcf.gz` use Ensembl names (`1,2,…`), as do the
+  GFF3, cache and FASTA; fastVEP resolves the `chr`-prefixed gnomAD/UCSC sources.
+* `run_fastvep.sh` passes `--transcript-cache` and not `--gff3` (fastVEP ignores the
+  GFF3 when an explicit cache loads); FV_GFF3 is recorded in provenance only.
+* `acmg_plp.tsv` keeps the pipeline schema (`chr, pos, ref, alt, gene, acmg_label,
+  acmg_criteria, n_pathogenic_criteria, n_benign_criteria, is_acmg_PLP`), so it
+  still feeds `build_carrier_matrix.sh`.
+* v6 outputs (fastVEP pre-0.5.0, no PICK field) still work with `--mode mane` and
+  the deprecated `--mode pick`; `--mode fastvep_pick` refuses them.
 
 ## Tests
+
 ```bash
 python -m pytest acmg_fastvep/tests/ -q
 ```
-- `test_parse_fastvep_acmg.py` — parser (severity collapse, criteria counts, P/LP
-  flag) on a synthetic VCF; no fastVEP needed.
-- `test_run_fastvep_smoke.py` — drives `run_fastvep.sh` on fastVEP's own
-  `tests/test.vcf`; **auto-skips** when `fastvep` isn't on PATH (set `FASTVEP_SRC` if
-  the checkout isn't `/workspace/fastvep`).
+
+fastvep and the fastVEP helper scripts are stubbed in every test except
+`test_run_fastvep_smoke.py`, which runs only with `FV_ENV` set (on Minerva). The
+carriers driver tests need GNU `realpath` (`-e`/`-m`).

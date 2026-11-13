@@ -2,7 +2,9 @@
 """Pull the carriers of a gene list out of the per-chromosome pick results
 into one table, with each carrier's variant annotation joined in.
 
-Reads (never writes) <pick-root>/results-carriers-pick-<chr>/acmg_carriers.tsv
+Reads (never writes) <pick-root>/<prefix><chr>/acmg_carriers.tsv (prefix
+results-carriers-pick- by default; results-carriers-fastvep_pick- for the
+fastVEP v0.5.0 fastvep_pick output)
 and acmg_variants.tsv for every chromosome present, keeps rows whose gene is
 in --genes, and writes:
 
@@ -52,6 +54,9 @@ def main(argv=None) -> int:
                     help="dir holding results-carriers-pick-<chr>/ folders")
     ap.add_argument("--genes", required=True,
                     help="gene symbols, one per line (or space/comma separated); # comments ok")
+    ap.add_argument("--prefix", default="results-carriers-pick-",
+                    help="per-chromosome dir prefix (results-carriers-fastvep_pick- for "
+                         "fastvep_pick output)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--out-summary", required=True)
     args = ap.parse_args(argv)
@@ -61,12 +66,12 @@ def main(argv=None) -> int:
     if not genes:
         ap.error(f"no genes in {args.genes}")
 
-    dirs = sorted(d for d in glob.glob(os.path.join(args.pick_root, "results-carriers-pick-*"))
+    dirs = sorted(d for d in glob.glob(os.path.join(args.pick_root, args.prefix + "*"))
                   if os.path.isfile(os.path.join(d, "acmg_carriers.tsv")))
     if not dirs:
-        print(f"ERROR: no results-carriers-pick-*/ under {args.pick_root}", file=sys.stderr)
+        print(f"ERROR: no {args.prefix}*/ under {args.pick_root}", file=sys.stderr)
         return 3
-    chroms = [os.path.basename(d)[len("results-carriers-pick-"):] for d in dirs]
+    chroms = [os.path.basename(d)[len(args.prefix):] for d in dirs]
     print(f"[extract] {len(genes)} gene(s); {len(dirs)} chromosome(s): {chroms}", file=sys.stderr)
 
     variant_cols: list[str] = []
