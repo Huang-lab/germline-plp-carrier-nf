@@ -90,9 +90,27 @@ md5_of() {
     if command -v md5sum >/dev/null 2>&1; then md5sum "$1" | cut -d' ' -f1
     else md5 -q "$1"; fi
 }
-fetch() {   # url dest
+fetch() {   # url dest — resumable. Callers first skip a file that already
+    # passes its integrity check; a resume of a file that is in fact complete
+    # gets HTTP 416, which curl -f reports as exit 22, so 416 is taken as
+    # "nothing left to fetch" and the caller's check decides.
     echo "[fetch] $1" >&2
-    curl -fL -R -C - --retry 3 --retry-delay 10 -o "$2" "$1"
+    local code rc=0
+    code="$(curl -fL -R -C - --retry 3 --retry-delay 10 -w '%{http_code}' -o "$2" "$1")" || rc=$?
+    if [ "$rc" != 0 ]; then
+        if [ "$code" = 416 ] && [ -s "$2" ]; then
+            echo "[fetch] HTTP 416 on resume: $2 is already complete; verifying it" >&2
+            return 0
+        fi
+        echo "ERROR: curl exit $rc (HTTP ${code:-?}) for $1" >&2
+        return "$rc"
+    fi
+}
+# The first N lines of a gzip file. Not `gzip -dc | head`: under pipefail the
+# SIGPIPE gzip gets when head stops reading fails the whole pipeline, so a
+# check written that way fails on every file large enough to matter.
+gz_head() {   # file n
+    { gzip -dc "$1" 2>/dev/null || true; } | sed -n "1,${2}p"
 }
 fetch_small() {   # url dest — small sidecar files (.md5, .tbi): always fetched whole
     echo "[fetch] $1" >&2
@@ -107,7 +125,12 @@ if [ -n "$CLINVAR_DATE" ]; then
     CV="$SRC/clinvar_${CLINVAR_DATE}.vcf.gz"
     if [ ! -s "$CV.md5.ok" ]; then
         fetch_small "$CV_URL.md5" "$CV.md5"
-        fetch "$CV_URL" "$CV"
+        # Already complete (e.g. a run that died after the download)? Then do not resume it.
+        if [ -s "$CV" ] && [ "$(cut -d' ' -f1 "$CV.md5")" = "$(md5_of "$CV")" ]; then
+            echo "[fetch] $CV already complete (md5 matches)" >&2
+        else
+            fetch "$CV_URL" "$CV"
+        fi
     fi
 else
     CV_URL="$CLINVAR_BASE/vcf_GRCh38/clinvar.vcf.gz"
@@ -116,7 +139,7 @@ else
     rm -f "$TMPCV" "$TMPCV.md5"
     fetch_small "$CV_URL.md5" "$TMPCV.md5"
     fetch "$CV_URL" "$TMPCV"
-    d="$(gzip -dc "$TMPCV" 2>/dev/null | head -50 | sed -n 's/^##fileDate=//p' | tr -d '-' | head -1 || true)"
+    d="$(gz_head "$TMPCV" 50 | sed -n 's/^##fileDate=//p' | tr -d '-' | sed -n 1p)"
     case "$d" in [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;; *) die "no ##fileDate in $CV_URL header" ;; esac
     CLINVAR_DATE="$d"
     CV="$SRC/clinvar_${CLINVAR_DATE}.vcf.gz"
@@ -128,7 +151,10 @@ if [ ! -s "$CV.md5.ok" ]; then
     [ "$want" = "$got" ] || die "$CV md5 $got != published $want (truncated download? delete it and re-run)"
     gzip -t "$CV" || die "$CV fails gzip -t"
     # The PM2 frequency backstop lives in AF_EXAC/AF_TGP/AF_ESP; a stripped VCF lacks it.
-    gzip -dc "$CV" | head -300 | grep -q '^##INFO=<ID=AF_EXAC' || die "$CV has no AF_EXAC INFO header"
+    case "$(gz_head "$CV" 300)" in
+        *'##INFO=<ID=AF_EXAC'*) ;;
+        *) die "$CV has no AF_EXAC INFO header" ;;
+    esac
     echo "$got" > "$CV.md5.ok"
 fi
 # Keep exactly one ClinVar VCF in sa_src, so the build cannot pick up two.
@@ -150,12 +176,23 @@ if [ ! -s "$VS.ok" ]; then
     fi
     gzip -t "$VS" || die "$VS fails gzip -t"
     date -u +%Y%m%d > "$VS.ok"
+    # variant_summary.txt.gz is a MOVING file (NCBI keeps no weekly copy). The
+    # copy in sa_src is the pinned artifact; its server date (curl -R) is
+    # recorded next to CLINVAR_DATE so the pair the build used is on record.
+    date -r "$VS" +%Y%m%d > "$SRC/VARIANT_SUMMARY_DATE"
 fi
-register "$VS" "$VS_URL" "moving file fetched $(cat "$VS.ok"); pair with ClinVar $CLINVAR_DATE (NCBI keeps no weekly copy)"
+[ -s "$SRC/VARIANT_SUMMARY_DATE" ] || date -r "$VS" +%Y%m%d > "$SRC/VARIANT_SUMMARY_DATE"
+register "$VS" "$VS_URL" "MOVING file: server date $(cat "$SRC/VARIANT_SUMMARY_DATE"), fetched $(cat "$VS.ok"); paired with ClinVar $CLINVAR_DATE"
 
 # --- gnomAD v4.1 exomes, per chromosome ---
 bgzf_eof_ok() {   # the 28-byte empty BGZF block every complete bgzip file ends with
     [ "$(tail -c 28 "$1" | od -An -tx1 | tr -d ' \n')" = "1f8b08040000000000ff0600424302001b0003000000000000000000" ]
+}
+gnomad_ok() {   # file chrom — complete (EOF block) and indexed for that chromosome
+    local contigs
+    [ -s "$1" ] && [ -s "$1.tbi" ] && bgzf_eof_ok "$1" || return 1
+    contigs="$(tabix -l "$1" 2>/dev/null)" || return 1
+    case $'\n'"$contigs"$'\n' in *$'\n'"chr$2"$'\n'*) return 0 ;; *) return 1 ;; esac
 }
 for c in $CHROMS; do
     f="$SRC/gnomad.exomes.v4.1.sites.chr${c}.vcf.bgz"
@@ -167,10 +204,14 @@ for c in $CHROMS; do
         continue
     fi
     if [ ! -e "$f.ok" ]; then
-        fetch_small "$url.tbi" "$f.tbi"
-        fetch "$url" "$f"
-        bgzf_eof_ok "$f" || die "$f does not end in a BGZF EOF block (truncated)"
-        tabix -l "$f" | grep -qx "chr${c}" || die "tabix -l $f does not list chr${c}"
+        if gnomad_ok "$f" "$c"; then
+            echo "[fetch] $f already complete (BGZF EOF + tabix)" >&2
+        else
+            fetch_small "$url.tbi" "$f.tbi"
+            fetch "$url" "$f"
+            bgzf_eof_ok "$f" || die "$f does not end in a BGZF EOF block (truncated)"
+            gnomad_ok "$f" "$c" || die "tabix -l $f does not list chr${c}"
+        fi
         if [ "$FULL_CHECK" = 1 ]; then
             command -v bgzip >/dev/null 2>&1 || die "--full-check needs bgzip"
             bgzip -t "$f" || die "$f fails bgzip -t"
@@ -187,7 +228,7 @@ if [ ! -e "$GC.ok" ]; then
     rm -f "$GC"; fetch "$GC_URL" "$GC"
     n="$(wc -l < "$GC" | tr -d ' ')"
     [ "$n" -gt 10000 ] || die "$GC has only $n lines"
-    head -1 "$GC" | grep -q 'gene' || die "$GC header has no gene column"
+    case "$(sed -n 1p "$GC")" in *gene*) ;; *) die "$GC header has no gene column" ;; esac
     date -u +%Y%m%d > "$GC.ok"
 fi
 register "$GC" "$GC_URL" "gnomAD v4.1 constraint"
@@ -195,7 +236,11 @@ register "$GC" "$GC_URL" "gnomAD v4.1 constraint"
 # --- REVEL v1.3: zip -> one CSV per chromosome (the build reads revel/revel_chrN.csv) ---
 RZ="$SRC/revel-v1.3_all_chromosomes.zip"
 if [ ! -e "$SRC/revel/.ok" ]; then
-    fetch "$REVEL_URL" "$RZ"
+    if [ -s "$RZ" ] && unzip -tq "$RZ" >/dev/null 2>&1; then
+        echo "[fetch] $RZ already complete (unzip -t)" >&2
+    else
+        fetch "$REVEL_URL" "$RZ"
+    fi
     unzip -tq "$RZ" >/dev/null || die "$RZ fails unzip -t"
     rm -rf "$SRC/revel.partial"; mkdir -p "$SRC/revel.partial"
     # chr,hg19_pos,grch38_pos,ref,alt,aaref,aaalt,REVEL,Ensembl_transcriptid

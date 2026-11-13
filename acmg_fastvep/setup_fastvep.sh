@@ -100,9 +100,19 @@ sha256_of() {   # file -> hex digest (sha256sum on Linux, shasum elsewhere)
     if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
     else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
-fetch() {   # url dest — resumable, retried, fails on HTTP errors
+fetch() {   # url dest — resumable, retried, fails on HTTP errors. HTTP 416 on a
+    # resume means the file is already whole (curl -f reports it as exit 22);
+    # that is success here, and the caller's check (sha256 / gzip -t) decides.
     echo "[setup] downloading $1" >&2
-    curl -fL -C - --retry 3 --retry-delay 10 -o "$2" "$1"
+    local code rc=0
+    code="$(curl -fL -C - --retry 3 --retry-delay 10 -w '%{http_code}' -o "$2" "$1")" || rc=$?
+    if [ "$rc" != 0 ]; then
+        if [ "$code" = 416 ] && [ -s "$2" ]; then
+            echo "[setup] HTTP 416 on resume: $2 already complete; verifying" >&2; return 0
+        fi
+        echo "ERROR: curl exit $rc (HTTP ${code:-?}) for $1" >&2
+        return "$rc"
+    fi
 }
 
 # --- 1. source tree at the tag (helper scripts; also the --from-source build) ---
@@ -203,8 +213,13 @@ if [ -s "$GFF3" ]; then
 elif [ "$CACHE_ONLY" = 1 ]; then
     echo "ERROR: --cache-only but no GFF3 at $GFF3" >&2; exit 3
 else
-    fetch "$GFF3_URL" "$DL_DIR/$(basename "$GFF3").gz"
-    gzip -t "$DL_DIR/$(basename "$GFF3").gz"
+    GZ="$DL_DIR/$(basename "$GFF3").gz"
+    if [ -s "$GZ" ] && gzip -t "$GZ" 2>/dev/null; then
+        echo "[setup] $GZ already complete (gzip -t)" >&2
+    else
+        fetch "$GFF3_URL" "$GZ"
+    fi
+    gzip -t "$GZ"
     gzip -dc "$DL_DIR/$(basename "$GFF3").gz" > "$GFF3.partial"
     mv -f "$GFF3.partial" "$GFF3"
     echo "[setup] GFF3 ready: $GFF3" >&2
@@ -233,7 +248,8 @@ elif [ "$BUILD_CACHE" = 1 ]; then
 fi
 
 # --- 6. provenance + env.sh (rewritten on every run, so they describe what is there now) ---
-glibc="$( (getconf GNU_LIBC_VERSION 2>/dev/null || ldd --version 2>/dev/null | head -1) || echo unknown)"
+glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null || { ldd --version 2>&1 | sed -n 1p; } || true)"
+glibc="${glibc:-unknown}"
 cache_sha=""; [ -s "$CACHE" ] && cache_sha="$(sha256_of "$CACHE")"
 PROV="$FV_HOME/fastvep.provenance"
 {
