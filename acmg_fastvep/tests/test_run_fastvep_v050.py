@@ -9,6 +9,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import os
+import shlex
 import shutil
 import subprocess
 import time
@@ -36,6 +37,14 @@ GATED = [
     "reference; they are annotated as intergenic",
     "warning: 7 record(s) are on contigs that the gene models and the reference do not have, and "
     "were called intergenic: chrUn_x",
+    # check_sa_assemblies (lib.rs sa_assembly_conflict), printed by annotate.rs as `warning: {conflict}`
+    "warning: --sa-dir holds databases built for different assemblies: GRCh37 (gnomad); GRCh38 "
+    "(clinvar). Variants are looked up by coordinate, so a database for the other assembly answers "
+    "with a different base's data or nothing. Keep one assembly per directory.",
+    # RefMismatches::report_line (lib.rs), only when the count is > 0
+    "warning: 3 record(s) have a REF allele that is not the reference's (for example 17:100, where "
+    "the VCF has REF `A` and the reference has `G`); the HGVS descriptions are written against the "
+    "reference, as Ensembl VEP writes them. Check that the VCF and the --fasta are the same assembly.",
 ]
 
 
@@ -52,7 +61,7 @@ def _fake(tmp_path: Path, *, stderr_line: str = "", tag: str = "a", sleep: float
         'Format: Allele|SYMBOL|ACMG|ACMG_CRITERIA|PICK|ACMG_DISORDERS\\">\\n"\n'
         'printf "#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\n"\n'
         'printf "17\\t100\\t.\\tA\\tG\\t.\\tPASS\\tCSQ=G|BRCA1|LP|PVS1|1|\\n"\n'
-        + (f"echo {stderr_line!r} >&2\n" if stderr_line else "")
+        + (f"printf '%s\\n' {shlex.quote(stderr_line)} >&2\n" if stderr_line else "")
         + "exit 0\n"
     )
     p.chmod(0o755)
@@ -271,3 +280,12 @@ def test_stale_mkdir_lock_names_its_holder(tmp_path):
     (out / ".batch.lock.d").mkdir()
     r = _run([BATCH, "--in-dir", tmp_path / "norm_qc", "-o", out], env)
     assert r.returncode == 7 and "batch output dir" in r.stderr
+
+
+def test_ordinary_stderr_does_not_trip_the_gate(tmp_path):
+    """What a clean v0.5.0 run prints (load lines, the pick order) must pass."""
+    fake = _fake(tmp_path, stderr_line="Loaded 9 annotation source(s) from /x/sa_db; "
+                                       "Loaded 3 gene-level annotation source(s) from /x/sa_db")
+    vcf, env = _setup(tmp_path, fake)
+    r = _run([RUNNER, "-i", vcf, "-o", tmp_path / "out", "--acmg"], env)
+    assert r.returncode == 0, r.stderr

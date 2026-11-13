@@ -33,6 +33,13 @@
 #   'could not be read and were not annotated'  VCF records dropped from the output
 #   'not a contig of the gene models' / 'are on contigs that the gene models and the
 #   reference do not have'                 records silently called intergenic
+#   'holds databases built for different assemblies'  sa_db mixes assemblies
+#                                          (check_sa_assemblies, printed only on a conflict)
+#   'have a REF allele that is not the reference'      REF disagrees with --fasta
+#                                          (printed only when >= 1 record with plain-base
+#                                          REF differs; N/ambiguity codes are not counted;
+#                                          our QC'd VCFs are bcftools-normalised against the
+#                                          same GRCh38, so any count means another assembly/FASTA)
 # (strings from fastvep-annotate/src/lib.rs and fastvep-cli/src/pipeline/annotate.rs
 # at v0.5.0). fastVEP's stderr is kept as <name>.fastvep.stderr.log either way.
 #
@@ -226,6 +233,7 @@ mv -f "$ERRTMP" "$ERRLOG"
 GATED='incomplete reference stack|was not loaded|hold nothing of chromosomes|answered by more than one database'
 GATED="$GATED|could not be read for|could not be read and were not annotated"
 GATED="$GATED|not a contig of the gene models|are on contigs that the gene models and the reference do not have"
+GATED="$GATED|holds databases built for different assemblies|have a REF allele that is not the reference"
 if grep -E "$GATED" "$ERRLOG" >&2; then
     echo "ERROR: fastVEP reported a reference-stack problem (lines above, full log $ERRLOG);" \
          "not publishing $name" >&2
