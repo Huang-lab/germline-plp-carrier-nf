@@ -44,6 +44,7 @@ if [ "$AC_MODE" = pick ]; then
 elif [ "$AC_MODE" = fastvep_pick ]; then
     OUT="$AC_OUT_ROOT/results-carriers-fastvep_pick-${chr_name}"
     if [ "${AC_KEEP_FLANKING:-0}" = 1 ]; then MODE_ARGS+=(--keep-flanking-genes); fi
+    if [ "${AC_ALLOW_PICK_ANOMALIES:-0}" = 1 ]; then MODE_ARGS+=(--allow-pick-anomalies); fi
 else
     OUT="$AC_OUT_ROOT/results-carriers-${chr_name}"
 fi

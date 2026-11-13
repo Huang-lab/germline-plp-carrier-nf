@@ -37,7 +37,8 @@ a `fastvep` found on PATH: they run `$FV_BIN` and check its sha256.
 | `check_sa_db.sh` | compute (full) / anywhere (`--quick`) | exact file set, `check_acmg_stack.py`, seal with SA_DB_SHA256.txt |
 | `run_fastvep.sh` | compute | annotate one chunk; `--acmg` adds `--flag-pick-allele-gene` |
 | `run_fastvep_batch.sh` / `run_fastvep.lsf` | compute | all chunks of a `norm_qc/` dir, with provenance |
-| `parse_fastvep_acmg.py` | (called) | CSQ → `<chunk>.acmg_plp.tsv` (most severe call per variant, pipeline schema) |
+| `parse_fastvep_acmg.py` | (called) | CSQ → `<chunk>.acmg_plp.tsv` (MOST SEVERE call over ALL transcripts; not a carrier source, see below) |
+| `fv_lock.sh` | (sourced) | one writer per chunk / per batch outdir (flock, else mkdir lock) |
 | `build_acmg_carriers_pick.py` | (called) | per (allele, gene) row + carriers; default `--selection fastvep_pick` |
 | `run_acmg_carriers_chr.sh` | compute | carriers for one chromosome dir (default `--mode fastvep_pick`) |
 | `compare_acmg_pick_vs_mane.py` | anywhere | MANE-only vs pick results |
@@ -79,7 +80,12 @@ ClinVar VCF (md5 + `gzip -t` + AF_EXAC header), `variant_summary.txt.gz`,
 chromosome), **ClinGen Gene-Disease Validity** (dated by download day), UCSC rmsk.
 Resumable; re-run after an interruption. `--skip-gnomad`, `--chroms "21 22"`.
 OMIM is opt-in only: `--omim-genemap2 /path/licensed/genemap2.txt`.
-Result: `sa_src/SOURCES.tsv`.
+Result: `sa_src/SOURCES.tsv`. `variant_summary.txt.gz` (for `clinvar_protein`) is
+NCBI's **moving** file with no weekly copy: the copy in `sa_src` is the pinned one,
+its server date goes to `sa_src/VARIANT_SUMMARY_DATE` next to `CLINVAR_DATE`, and
+its sha256 is in SOURCES.tsv and in `clinvar_protein.oga.done`. Refreshing ClinVar
+means refreshing both. A re-run never re-downloads a file that already passes its
+check, and a resume that the server answers with HTTP 416 counts as complete.
 
 ## 2. Build the databases (compute: one array + one job)
 
@@ -104,8 +110,11 @@ for licensed OMIM); `repeatmasker` (`--source custom_bed --name repeatmasker`).
 `sa-build --format auto` writes `.osa2` for every allele-level source (clinvar and
 revel included), `.oga` gene-level, `.osi` for RepeatMasker.
 
-A database reaches `sa_db/` only after `sa-build` exits 0, then gets `<db>.done`;
-re-submitting skips anything with both. Never `--allow-empty`. Logs:
+A database reaches `sa_db/` only after `sa-build` exits 0, then gets `<db>.done`,
+which records the upstream source file and its sha256, the binary sha256 and the
+sa-build args. Re-submitting skips a database only when all of those still match;
+a new ClinGen export, a re-split REVEL, a new binary or `--use-omim` rebuilds the
+affected databases without `--force` (stderr says why). Never `--allow-empty`. Logs:
 `$FV_HOME/sa_build_logs/`. To reclaim the 198 GB once a chromosome is built:
 `FV_SA_ARGS=--delete-gnomad-src` on the array (deletes only after gnomad, spliceai
 and phylop of that chromosome all have `.done`).
@@ -141,18 +150,25 @@ bsub -P "$MINERVA_ALLOCATION" -J fv050-acmg-chr21 < acmg_fastvep/run_fastvep.lsf
 
 What to verify before anything else runs:
 
-1. **No gated warnings.** A chunk whose fastVEP stderr says `incomplete reference
-   stack`, `was not loaded`, `hold nothing of chromosomes` or `answered by more
-   than one database` fails and publishes nothing, so: every line of
+1. **No gated warnings.** fastVEP exits 0 on all of these, so a chunk whose stderr
+   says `incomplete reference stack`, `was not loaded`, `hold nothing of
+   chromosomes`, `answered by more than one database`, `could not be read for`
+   (an SA lookup I/O error: no annotation, PM2 can fire), `could not be read and
+   were not annotated` (records dropped), `not a contig of the gene models` or
+   `are on contigs that the gene models and the reference do not have` (records
+   called intergenic) fails and publishes nothing. So: every line of
    `$FV_OUT/batch_manifest.tsv` is `ok`, and
-   `grep -lE 'incomplete reference stack|was not loaded|hold nothing|more than one database' $FV_OUT/*.fastvep.stderr.log`
+   `grep -lE 'reference stack|was not loaded|hold nothing|more than one database|could not be read|not a contig|are on contigs' $FV_OUT/*.fastvep.stderr.log`
    prints nothing.
 2. **CSQ fields.** `zcat $FV_OUT/<chunk>.fastvep.vcf.gz | grep -m1 '^##INFO=<ID=CSQ' | sed 's/.*Format: //; s/">$//' | tr '|' '\n' | grep -xcE 'MANE_SELECT|ACMG|ACMG_CRITERIA|ACMG_DISORDERS|PICK'`
    prints `5` (ACMG_DISORDERS is the last field, PICK follows FLAGS).
 3. **Exactly one PICK=1 per allele + gene.** Run the carriers step (§5); its
    `summary.txt` must say `with no PICK=1: 0; with more than one: 0`. Anything
-   else is listed on stderr (`chunks.stderr.log`) and those rows are flagged
-   `NO_PICK_FLAG` / `MULTIPLE_PICK_FLAGS`, never resolved by a pick of our own.
+   else is listed on stderr (`chunks.stderr.log`), those rows are flagged
+   `NO_PICK_FLAG` / `MULTIPLE_PICK_FLAGS` (never resolved by a pick of our own),
+   and the carriers job **fails (exit 5) after writing its tables**: per fastVEP's
+   pick.rs it cannot happen, so a non-zero count means parser and output disagree.
+   `--allow-pick-anomalies` accepts it once understood.
 4. **Provenance.** `$FV_OUT/fastvep_run_provenance.txt` names the binary sha256 and
    version (0.5.0), cache sha256, FASTA, `sa_db_sha256`, the pipeline git rev and
    LSB_JOBID; each chunk has `<chunk>.fastvep.provenance` with the same hashes.
@@ -204,9 +220,17 @@ acmg_fastvep/submit_acmg_carriers.sh --batch-root <batch> --dir-suffix _fv050 \
     --mode fastvep_pick --out-root <batch>/results-acmg-fv050
 ```
 
-Re-running the batch skips a finished chunk only if its provenance matches the
-current binary and sa_db; output made with anything else is refused (`--force` /
-`FV_FORCE=1` redoes it). Use a fresh output dir per sa_db build.
+Re-running the batch skips a finished chunk only if every key field of its
+provenance matches: mode, binary sha256, sa_db hash, input chunk sha256, transcript
+cache sha256, FASTA path, acmg-config sha256 (or none) and the fastVEP flags.
+Output made with anything else is refused, naming the fields that differ
+(`--force` / `FV_FORCE=1` redoes it). Use a fresh output dir per sa_db build.
+
+Only one job writes a chunk at a time: partial files are named per job
+(`.<chunk>.*.partial.<LSB_JOBID>.<pid>`), each chunk takes `<outdir>/.<chunk>.lock`
+and a local batch takes `<outdir>/.batch.lock` (flock on Minerva; a mkdir lock
+elsewhere, whose error names the holder and how to remove a stale one). A second
+writer exits 7.
 
 ### Gene panel
 
@@ -232,9 +256,15 @@ cache, FASTA): `<chunk>.fastvep.vcf.gz`. `--pick` is allowed here only (it and
   GFF3, cache and FASTA; fastVEP resolves the `chr`-prefixed gnomAD/UCSC sources.
 * `run_fastvep.sh` passes `--transcript-cache` and not `--gff3` (fastVEP ignores the
   GFF3 when an explicit cache loads); FV_GFF3 is recorded in provenance only.
-* `acmg_plp.tsv` keeps the pipeline schema (`chr, pos, ref, alt, gene, acmg_label,
-  acmg_criteria, n_pathogenic_criteria, n_benign_criteria, is_acmg_PLP`), so it
-  still feeds `build_carrier_matrix.sh`.
+* **`<chunk>.acmg_plp.tsv` and `all.acmg_plp.tsv` (`--concat`) are NOT a carrier
+  source.** `parse_fastvep_acmg.py` keeps, per variant, the most severe ACMG call
+  over ALL transcripts and genes (the max-over-transcripts behaviour the pick work
+  replaced), so a variant is P/LP there if any transcript says so. Carriers come
+  from `run_acmg_carriers_chr.sh --mode fastvep_pick` (`acmg_variants.tsv` /
+  `acmg_carriers.tsv`). The TSV keeps the pipeline schema (`chr, pos, ref, alt,
+  gene, acmg_label, acmg_criteria, n_pathogenic_criteria, n_benign_criteria,
+  is_acmg_PLP`) for comparison only; do not feed it to `build_carrier_matrix.sh`
+  for carrier counts.
 * v6 outputs (fastVEP pre-0.5.0, no PICK field) still work with `--mode mane` and
   the deprecated `--mode pick`; `--mode fastvep_pick` refuses them.
 

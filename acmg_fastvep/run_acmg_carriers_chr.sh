@@ -29,12 +29,15 @@ Options:
   --pick-order <s>  (pick mode) passed through as --pick-order
   --keep-flanking-genes
                     (pick / fastvep_pick) keep upstream/downstream-only gene rows
+  --allow-pick-anomalies
+                    (fastvep_pick) exit 0 even if some (allele, gene) had no or several
+                    PICK=1 blocks. Default: tables are written, then exit 5.
 USAGE
     exit 2
 }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-INDIR=""; OUTDIR=""; JOBS=4; MODE=fastvep_pick; PICK_ORDER=""; KEEP_FLANKING=0
+ALLOW_ANOM=0; INDIR=""; OUTDIR=""; JOBS=4; MODE=fastvep_pick; PICK_ORDER=""; KEEP_FLANKING=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --in-dir)    INDIR="$2"; shift 2 ;;
@@ -43,6 +46,7 @@ while [ $# -gt 0 ]; do
         --mode)      MODE="$2"; shift 2 ;;
         --pick-order) PICK_ORDER="$2"; shift 2 ;;
         --keep-flanking-genes) KEEP_FLANKING=1; shift ;;
+        --allow-pick-anomalies) ALLOW_ANOM=1; shift ;;
         -h|--help)   usage ;;
         *) echo "Unknown arg: $1" >&2; usage ;;
     esac
@@ -68,7 +72,8 @@ case "$MODE" in
           if [ -n "$PICK_ORDER" ]; then
               echo "ERROR: --pick-order needs --mode pick; fastvep_pick uses fastVEP's own PICK flag" >&2; exit 2
           fi
-          EXTRA='--selection fastvep_pick --stats-json "$PARTS/${name}.stats.json"'
+          # Each chunk is let through; the chromosome total decides, after concat.
+          EXTRA='--selection fastvep_pick --allow-pick-anomalies --stats-json "$PARTS/${name}.stats.json"'
           if [ "$KEEP_FLANKING" = 1 ]; then EXTRA="$EXTRA --keep-flanking-genes"; fi ;;
     *) echo "ERROR: --mode must be fastvep_pick, mane or pick (got $MODE)" >&2; exit 2 ;;
 esac
@@ -149,10 +154,22 @@ fi
 if [ "$MODE" = pick ] || [ "$MODE" = fastvep_pick ]; then
     # One summary for the whole chromosome (sum of every chunk's counters),
     # plus each chunk's own stderr, kept next to the tables.
-    python3 "$HERE/build_acmg_carriers_pick.py" --aggregate "$WORK"/parts/*.stats.json \
-        | tee "$OUTDIR/summary.txt" >&2
+    agg_args=("$WORK"/parts/*.stats.json)
+    [ "$ALLOW_ANOM" = 1 ] && agg_args+=(--allow-pick-anomalies)
+    set +e
+    python3 "$HERE/build_acmg_carriers_pick.py" --aggregate "${agg_args[@]}" > "$OUTDIR/summary.txt"
+    agg_rc=$?
+    set -e
+    cat "$OUTDIR/summary.txt" >&2
+    case "$agg_rc" in 0|3) ;; *) echo "ERROR: aggregating chunk stats failed ($agg_rc)" >&2; exit 4 ;; esac
 fi
 cat "$WORK"/parts/*.stderr > "$OUTDIR/chunks.stderr.log"
 
+if [ "${agg_rc:-0}" = 3 ]; then
+    echo "ERROR: fastvep_pick found (allele, gene) rows without exactly one PICK=1 (see" \
+         "summary.txt and chunks.stderr.log). Tables are written; failing so this is looked at;" \
+         "--allow-pick-anomalies accepts it." >&2
+    exit 5
+fi
 echo "[acmg-carriers] done: $OUTDIR/acmg_variants.tsv ($(( $(wc -l < "$OUTDIR/acmg_variants.tsv") - 1 )) rows), " \
      "$OUTDIR/acmg_carriers.tsv ($(( $(wc -l < "$OUTDIR/acmg_carriers.tsv") - 1 )) rows)" >&2

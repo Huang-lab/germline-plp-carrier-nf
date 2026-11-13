@@ -50,14 +50,14 @@ def write_vcf(path: Path, records, fields=FIELDS, gz=False):
     return path
 
 
-def run(tmp_path, records, *extra, fields=FIELDS, check=True):
+def run(tmp_path, records, *extra, fields=FIELDS, check=True, rc=0):
     vcf = write_vcf(tmp_path / "in.fastvep.vcf", records, fields)
     ov, oc = tmp_path / "v.tsv", tmp_path / "c.tsv"
     res = subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf), "--out-variants",
                           str(ov), "--out-carriers", str(oc), *extra],
                          capture_output=True, text=True)
     if check:
-        assert res.returncode == 0, res.stderr
+        assert res.returncode == rc, res.stderr
         return (list(csv.DictReader(ov.open(), delimiter="\t")),
                 list(csv.DictReader(oc.open(), delimiter="\t")), res.stderr)
     return res
@@ -99,7 +99,9 @@ def test_zero_or_two_picks_are_flagged_not_resolved(tmp_path):
     two = ("2", 400, [blk("stop_gained", "GB", "GB_ID", "ENSTB2", "P", "PVS1", pick="1"),
                       blk("missense_variant", "GB", "GB_ID", "ENSTB1", "VUS", pick="1")],
            ("0/1", "0/0"))
-    v, c, err = run(tmp_path, [none, two])
+    # Outputs are written, and the script then fails: per pick.rs this cannot happen.
+    v, c, err = run(tmp_path, [none, two], rc=3)
+    assert "ERROR: 2 (allele, gene) row(s) had no or several PICK=1 blocks" in err
     by = {r["gene"]: r for r in v}
     assert by["GA"]["acmg_label"] == "NO_PICK_FLAG" and by["GA"]["is_acmg_PLP"] == "0"
     assert by["GA"]["pick_flag"] == "no_pick" and by["GA"]["transcript_id"] == ""
@@ -110,6 +112,8 @@ def test_zero_or_two_picks_are_flagged_not_resolved(tmp_path):
     assert c == []                                          # flagged rows carry no carriers
     assert "with no PICK=1: 1; with more than one: 1" in err
     assert err.count("WARN:") == 2
+    v2, _, err2 = run(tmp_path, [none, two], "--allow-pick-anomalies")
+    assert v2 == v and "accepted (--allow-pick-anomalies)" in err2
 
 
 def test_one_row_per_gene(tmp_path):
@@ -188,3 +192,25 @@ def test_compare_reads_fastvep_pick_dirs_across_suffixes(tmp_path):
     tiers = (out / "pick_tier_counts.tsv").read_text()
     assert "fastvep_pick" in tiers
     assert "EO" in (out / "mane_discordant_plp.tsv").read_text()
+
+
+def test_chr_driver_fails_on_pick_anomalies_after_writing(tmp_path):
+    indir = tmp_path / "results-fastvep-chr21_fv050"
+    indir.mkdir()
+    write_vcf(indir / "c1.fastvep.vcf.gz", [("21", 10, [
+        blk("stop_gained", "G1", "G1", "E1", "P", "PVS1", pick="1", impact="HIGH")], ("0/1", "0/0"))],
+        gz=True)
+    write_vcf(indir / "c2.fastvep.vcf.gz", [("21", 20, [
+        blk("missense_variant", "G2", "G2", "E2", "VUS"),
+        blk("missense_variant", "G2", "G2", "E3", "LP", mane="NM_3")], ("0/0", "0/1"))], gz=True)
+    out = tmp_path / "out"
+    res = subprocess.run(["bash", str(DRIVER), "--in-dir", str(indir), "-o", str(out), "-j", "2"],
+                         capture_output=True, text=True)
+    assert res.returncode == 5, res.stderr
+    assert "without exactly one PICK=1" in res.stderr
+    v = list(csv.DictReader((out / "acmg_variants.tsv").open(), delimiter="\t"))
+    assert sorted(r["acmg_label"] for r in v) == ["NO_PICK_FLAG", "Pathogenic"]
+    assert "with no PICK=1: 1" in (out / "summary.txt").read_text()
+    ok = subprocess.run(["bash", str(DRIVER), "--in-dir", str(indir), "-o", str(out), "-j", "2",
+                         "--allow-pick-anomalies"], capture_output=True, text=True)
+    assert ok.returncode == 0, ok.stderr

@@ -20,7 +20,10 @@ Two ways of choosing that block (--selection):
     PICK=1 block, or with more than one, is not resolved: its row is flagged
     (acmg_label NO_PICK_FLAG / MULTIPLE_PICK_FLAGS, is_acmg_PLP 0, pick_flag
     says which transcripts) and counted in the summary. acmg_label_mane is the
-    MANE Select block's label, or NO_MANE_TRANSCRIPT.
+    MANE Select block's label, or NO_MANE_TRANSCRIPT. Per fastVEP's pick.rs,
+    --flag-pick-allele-gene flags exactly one block per (allele, gene), so a
+    flagged row means this parser and fastVEP's output disagree: both tables
+    are still written, then the script exits 3 (--allow-pick-anomalies accepts).
   * python_pick (DEPRECATED; kept for a one-time comparison against the v6
     outputs, which have no PICK field): the Python port of fastVEP's pick
     hierarchy described below.
@@ -738,6 +741,9 @@ def main(argv=None) -> int:
     fl.add_argument("--keep-flanking-genes", dest="drop_flanking", action="store_false")
     ap.add_argument("--stats-json", help="also write the summary counters here (for per-chromosome "
                     "aggregation by run_acmg_carriers_chr.sh)")
+    ap.add_argument("--allow-pick-anomalies", action="store_true",
+                    help="fastvep_pick: exit 0 even when an (allele, gene) had no or several "
+                         "PICK=1 blocks (default: exit 3 after writing the outputs)")
     args = ap.parse_args(argv)
 
     if args.selection == "fastvep_pick" and args.pick_order is not None:
@@ -765,13 +771,30 @@ def main(argv=None) -> int:
         with open(args.stats_json, "w", encoding="utf-8") as fh:
             json.dump({"order": order, "drop_flanking": args.drop_flanking,
                        "selection": args.selection, "stats": stats}, fh)
-    return 0
+    return _anomaly_exit(stats, args.selection, args.allow_pick_anomalies)
+
+
+def _anomaly_exit(stats: dict, selection: str, allow: bool) -> int:
+    n = stats.get("no_pick_rows", 0) + stats.get("multi_pick_rows", 0)
+    if selection != "fastvep_pick" or n == 0:
+        return 0
+    if allow:
+        print(f"WARN: {n} (allele, gene) row(s) without exactly one PICK=1 block; accepted "
+              "(--allow-pick-anomalies)", file=_sys.stderr)
+        return 0
+    print(f"ERROR: {n} (allele, gene) row(s) had no or several PICK=1 blocks. fastVEP's "
+          "--flag-pick-allele-gene flags exactly one, so this output and this parser disagree "
+          "(outputs were written; rows flagged NO_PICK_FLAG / MULTIPLE_PICK_FLAGS). Investigate, "
+          "or pass --allow-pick-anomalies.", file=_sys.stderr)
+    return 3
 
 
 def aggregate_stats_main(argv=None) -> int:
     """`build_acmg_carriers_pick.py --aggregate a.json b.json ...`: sum per-chunk
     counters and print the same summary for the whole set."""
-    paths = argv if argv is not None else _sys.argv[2:]
+    paths = list(argv if argv is not None else _sys.argv[2:])
+    allow = "--allow-pick-anomalies" in paths
+    paths = [p for p in paths if p != "--allow-pick-anomalies"]
     total = new_stats()
     order, drop, selection = [], True, "python_pick"
     for p in paths:
@@ -786,7 +809,7 @@ def aggregate_stats_main(argv=None) -> int:
             else:
                 total[k] = total.get(k, 0) + v
     print(format_summary(total, order, drop, selection))
-    return 0
+    return _anomaly_exit(total, selection, allow)
 
 
 if __name__ == "__main__":

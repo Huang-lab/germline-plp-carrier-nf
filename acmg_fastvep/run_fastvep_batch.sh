@@ -33,6 +33,7 @@ Batch options:
   --queue <q>             LSF queue (default: premium)
   --walltime <hh:mm>      LSF walltime (default: 4:00)
   --concat                after (local) runs, concatenate *.acmg_plp.tsv into one
+                          (max over transcripts: for review, NOT a carrier source)
   --force                 re-run chunks whose existing output was made with a different
                           binary / sa_db (or has no provenance) instead of refusing
   -h, --help
@@ -293,6 +294,8 @@ if [ "$DO_CONCAT" = 1 ] && [ "$DO_ACMG" = 1 ]; then
         exit 4
     fi
     echo "[batch] concatenated ACMG table: $OUT_ALL ($n_tsv chunks)" >&2
+    echo "[batch] NOTE: $OUT_ALL is the most severe call over ALL transcripts per variant;" \
+         "it is not a carrier source (use run_acmg_carriers_chr.sh --mode fastvep_pick)." >&2
 fi
 
 [ "$n_fail" -eq 0 ] || exit 1
