@@ -1,184 +1,228 @@
 #!/usr/bin/env bash
-# Build fastVEP supplementary-annotation databases into $FV_ROOT/sa_db.
+# Build the fastVEP v0.5.0 ACMG supplementary-annotation stack from
+# $FV_HOME/sa_src (fetch_sa_sources.sh) into $FV_SA (= $FV_HOME/sa_db), exactly
+# as fastVEP docs/ACMG_SETUP.md at the v0.5.0 tag builds it. Offline: run it on
+# COMPUTE nodes, via build_sa_dbs.lsf.
 #
-# Run on a COMPUTE node (offline — reads local source files in $FV_ROOT/sa_src).
-# Whole-genome sources (clinvar, revel, gnomad_genes, clinvar_protein, omim,
-# phylop, repeatmasker) are built once if missing. gnomAD and SpliceAI are
-# per-chromosome / precomputed downloads; gnomAD auto-detects from the
-# gnomad.exomes.*.sites.chrN.*.bgz files present in sa_src.
+# Two modes, so the work splits into one job plus one array:
+#   --single     the five whole-genome databases
+#                  clinvar.osa2          <- clinvar_<date>.vcf.gz
+#                  clinvar_protein.oga   <- variant_summary.txt.gz (NOT the VCF: no splice index)
+#                  gnomad_genes.oga      <- gnomad.v4.1.constraint_metrics.tsv
+#                  omim.oga              <- ClinGen GDV via clingen_gdv_to_oga.py
+#                                           (real OMIM genemap2.txt only with --use-omim)
+#                  repeatmasker.osi      <- rmsk.txt.gz via repeatmasker_to_bed.py,
+#                                           --source custom_bed --name repeatmasker
+#   --chrom N    the four per-chromosome databases for chromosome N (1-22, X, Y)
+#                  gnomad_chrN.osa2      <- gnomAD v4.1 exomes chrN, --chunk-bits 16
+#                  spliceai_chrN.osa2    <- extract_gnomad_scores.py (spliceai_ds_max), --chunk-bits 16
+#                  phylop_chrN.osa2      <- extract_gnomad_scores.py (phylop),          --chunk-bits 16
+#                  revel_chrN.osa2       <- sa_src/revel/revel_chrN.csv (none for Y: REVEL has no chrY)
 #
-# v6 note: as of the v6 sa_db build (2026-08-19), this script only covered
-# clinvar/revel/gnomad_genes/gnomad. The other 5 sources the ACMG classifier
-# reads (spliceai, phylop, omim, clinvar_protein, repeatmasker) were built by
-# hand directly against $FV_ROOT/sa_db and were not previously reflected here.
-# This update adds them so the full 9-source stack is reproducible from this
-# script instead of living only as untracked state on Minerva. See
-# docs/ACMG_SETUP.md upstream (Huang-lab/fastVEP) for the full source list and
-# what each one drives.
+# Extensions are what v0.5.0's `sa-build --format auto` (the default) writes:
+# .osa2 for every allele-level source (OSA2_SUPPORTED_SOURCES in
+# crates/fastvep-cli/src/pipeline/sa_build.rs includes clinvar and revel), .oga
+# for the gene-level sources, .osi for custom_bed. (ACMG_SETUP.md's size table
+# lists clinvar.osa / revel_chr*.osa from the benchmark's older build; auto
+# writes .osa2.)
 #
-# omim: this repo builds real OMIM `genemap2.txt` (downloaded directly from
-# omim.org, requires an OMIM license), not ClinGen Gene-Disease Validity. Both
-# parse into the same .oga under the `omim` source key and are both supported
-# by `fastvep sa-build --source omim`, but they are not equivalent: ClinGen GDV
-# carries an explicit Refuted/Disputed tier that real OMIM's genemap2 does not,
-# so a gene ClinGen has refuted may still pass the PVS1 gene-validity gate here
-# where it would not against the upstream repo's own published ACMG benchmark
-# (which defaults to ClinGen GDV). Worth knowing if a PVS1 call on a
-# contested-validity gene ever looks surprising.
-#
-# Usage:
-#   export FASTVEP=/.../fastvep/bin/fastvep
-#   export FV_ROOT=/.../data/fastvep            # has sa_src/ ; sa_db/ is created
-#   export CLINVAR=/.../clinvar_YYYYMMDD.vcf.gz  # optional (whole-genome clinvar source)
-#   export CLINVAR_VARIANT_SUMMARY=/.../variant_summary.txt.gz  # optional (clinvar_protein);
-#     defaults to the shared ClinVar refs copy at
-#     /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/variants_PLP/data/refs/clinvar/variant_summary.txt.gz
-#     if unset and nothing is found under sa_src/
-#   export OMIM_GENEMAP2=/.../genemap2.txt       # optional (real OMIM; requires a license)
-#   acmg_fastvep/build_sa_dbs.sh                 # build whole-genome + all gnomAD chrs found
-#   acmg_fastvep/build_sa_dbs.sh 2 3 4           # build whole-genome (if missing) + gnomAD chr2,3,4
+# Safety rules, each one a past or documented silent failure:
+#   * Never --allow-empty: an empty database answers every query "no record",
+#     which PM2 reads as "absent from the population".
+#   * A database is built in $FV_HOME/sa_build_tmp and moved into sa_db only
+#     after sa-build exits 0, then <db>.done is written. A killed job leaves
+#     nothing in sa_db for fastVEP to half-load.
+#   * Skip = output AND .done both present. Either alone is rebuilt.
+#   * Only gnomAD v4.1 EXOMES are read. Never put joint or genomes databases
+#     beside these: fastVEP keeps one gnomad answer per allele (the database
+#     sorting last), so mixing silently swaps frequencies.
+#   * The binary must be the pinned one (sha256 == FV_BIN_SHA256 from env.sh).
 set -euo pipefail
 
-FASTVEP="${FASTVEP:?set FASTVEP=<fastvep binary>}"
-FV_ROOT="${FV_ROOT:?set FV_ROOT=<tool root with sa_src/>}"
-SRC="$FV_ROOT/sa_src"
-DB="$FV_ROOT/sa_db"
-CLINVAR="${CLINVAR:-}"
-CLINVAR_VARIANT_SUMMARY="${CLINVAR_VARIANT_SUMMARY:-}"
-OMIM_GENEMAP2="${OMIM_GENEMAP2:-}"
-mkdir -p "$DB"
+usage() {
+    cat >&2 <<'USAGE'
+Usage: build_sa_dbs.sh (--single | --chrom <N>) [options]
 
-command -v "$FASTVEP" >/dev/null 2>&1 || { echo "ERROR: fastvep not found: $FASTVEP" >&2; exit 3; }
-[ -d "$SRC" ] || { echo "ERROR: sources dir missing: $SRC" >&2; exit 3; }
+Environment (from `source $FV_HOME/env.sh`, or FV_ENV=<path to env.sh>):
+  FV_HOME FV_BIN FV_BIN_SHA256 FV_SRC [FV_SA, default $FV_HOME/sa_db]
 
-# Every source the ACMG classifier reads records a status here, so the run ends
-# with a statement of what sa_db actually contains rather than leaving the
-# operator to infer it from `ls`. A source whose input file is absent used to
-# short-circuit before build_once could say anything: on a fresh machine the
-# script printed one line, exited 0, and built nothing.
-SA_OK=""        # built now, or already present
-SA_MISSING=""   # no input found
-
-sa_mark()    { case "$1" in ok) SA_OK="$SA_OK $2";; missing) SA_MISSING="$SA_MISSING $2";; esac; }
-sa_missing() {   # outbase  what-to-supply
-    echo "[skip] $1 — no source file found; $2" >&2
-    sa_mark missing "$1"
+Options:
+  --single              build clinvar, clinvar_protein, gnomad_genes, omim, repeatmasker
+  --chrom <N>           build gnomad/spliceai/phylop/revel for chromosome N (1-22, X, Y)
+  --use-omim            omim.oga from sa_src/genemap2.txt (licensed OMIM) instead of ClinGen
+  --delete-gnomad-src   after gnomad+spliceai+phylop for --chrom N all succeed, delete
+                        that chromosome's gnomAD .vcf.bgz/.tbi from sa_src
+  --force               rebuild even when <db> and <db>.done exist
+  -h, --help
+USAGE
+    exit 2
 }
 
-build_once() {   # source  outbase  inputfile
-    local src="$1" out="$2" in="$3"
-    if ls "$DB/$out".* >/dev/null 2>&1; then echo "[skip] $out already built"; sa_mark ok "$out"; return; fi
-    [ -s "$in" ] || { echo "[skip] $out — no input file: $in" >&2; sa_mark missing "$out"; return; }
-    echo "[build] $out  <-  $in"
-    "$FASTVEP" sa-build --source "$src" -i "$in" -o "$DB/$out" --assembly GRCh38
-    sa_mark ok "$out"
-}
-
-# Build when the input resolved, report by name when it did not.
-build_or_report() {   # source  outbase  inputfile-or-empty  what-to-supply
-    if [ -n "$3" ]; then build_once "$1" "$2" "$3"; else sa_missing "$2" "$4"; fi
-}
-
-# --- whole-genome sources (built once) ---
-build_or_report clinvar clinvar "$CLINVAR" "set CLINVAR=/path/to/clinvar_YYYYMMDD.vcf.gz"
-build_once revel revel "$SRC/revel_with_transcript_ids"
-GC="$(ls "$SRC"/gnomad*constraint*metrics*.tsv 2>/dev/null | head -1 || true)"
-build_or_report gnomad_genes gnomad_genes "$GC" "put gnomad*constraint*metrics*.tsv in $SRC"
-
-# clinvar_protein: gene-level protein/splice index. Must be built from
-# variant_summary.txt.gz, not the allele VCF — the VCF carries no HGVS c.
-# token, so it yields few protein entries and no splice index at all.
-# For the v6 build this lived outside sa_src, under the shared ClinVar refs
-# dir rather than this tool's own source tree — default to that path, since
-# nothing under sa_src/ will match the fallback glob.
-VS="${CLINVAR_VARIANT_SUMMARY:-$(ls "$SRC"/variant_summary.txt.gz 2>/dev/null | head -1 || true)}"
-[ -z "$VS" ] && [ -s "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/variants_PLP/data/refs/clinvar/variant_summary.txt.gz" ] && \
-    VS="/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/variants_PLP/data/refs/clinvar/variant_summary.txt.gz"
-build_or_report clinvar_protein clinvar_protein "$VS" "set CLINVAR_VARIANT_SUMMARY=/path/to/variant_summary.txt.gz"
-
-# omim: real OMIM genemap2.txt (see the note above). Real OMIM requires a
-# license; ClinGen Gene-Disease Validity is the free/default alternative
-# upstream's own docs recommend if you don't have one.
-OM="${OMIM_GENEMAP2:-$(ls "$SRC"/genemap2.txt 2>/dev/null | head -1 || true)}"
-build_or_report omim omim "$OM" "set OMIM_GENEMAP2=/path/to/genemap2.txt (licensed), or build ClinGen GDV instead"
-
-# repeatmasker: interval-level (.osi), built from a BED. This repo's sa_src
-# ships both a raw UCSC rmsk.txt.gz and repeatmasker_to_bed.py to convert it;
-# run that conversion first if repeatmasker.bed isn't already present.
-RM_BED="$(ls "$SRC"/repeatmasker.bed 2>/dev/null | head -1 || true)"
-if [ -z "$RM_BED" ] && [ -s "$SRC/rmsk.txt.gz" ] && [ -x "$SRC/repeatmasker_to_bed.py" ]; then
-    echo "[build] repeatmasker.bed  <-  $SRC/rmsk.txt.gz (via repeatmasker_to_bed.py)"
-    python3 "$SRC/repeatmasker_to_bed.py" "$SRC/rmsk.txt.gz" > "$SRC/repeatmasker.bed"
-    RM_BED="$SRC/repeatmasker.bed"
+if [ -n "${FV_ENV:-}" ]; then
+    # shellcheck disable=SC1090
+    . "$FV_ENV"
 fi
-build_or_report custom_bed repeatmasker "$RM_BED" "put repeatmasker.bed (or rmsk.txt.gz + repeatmasker_to_bed.py) in $SRC"
+MODE=""; CHROM=""; USE_OMIM=0; DELETE_GNOMAD=0; FORCE=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --single)            MODE=single; shift ;;
+        --chrom)             MODE=chrom; CHROM="${2#chr}"; shift 2 ;;
+        --use-omim)          USE_OMIM=1; shift ;;
+        --delete-gnomad-src) DELETE_GNOMAD=1; shift ;;
+        --force)             FORCE=1; shift ;;
+        -h|--help)           usage ;;
+        *) echo "Unknown arg: $1" >&2; usage ;;
+    esac
+done
+[ -n "$MODE" ] || usage
+if [ "$MODE" = chrom ]; then
+    case "$CHROM" in
+        [1-9]|1[0-9]|2[0-2]|X|Y) ;;
+        *) echo "ERROR: --chrom must be 1-22, X or Y (got '$CHROM')" >&2; exit 2 ;;
+    esac
+fi
 
-# phylop: allele-level conservation. Upstream's recommended path distills this
-# (and SpliceAI) directly out of gnomAD v4.1's own INFO columns via
-# scripts/extract_gnomad_scores.py (Huang-lab/fastVEP), which needs no UCSC
-# download. This repo's sa_src instead ships raw per-chromosome UCSC
-# phyloP100way wigFix files (chrN.phyloP100way.wigFix.gz, plus a combined
-# hg38.phyloP100way.wigFix.gz) — build from whichever fastVEP's phylop source
-# parser accepts; adjust the input glob below if it expects the combined file
-# rather than per-chromosome ones.
-PHYLOP_SRC="$(ls "$SRC"/hg38.phyloP100way.wigFix.gz 2>/dev/null | head -1 || true)"
-build_or_report phylop phylop "$PHYLOP_SRC" "put hg38.phyloP100way.wigFix.gz in $SRC"
+: "${FV_HOME:?set FV_HOME (source \$FV_HOME/env.sh, or FV_ENV=<env.sh>)}"
+: "${FV_BIN:?set FV_BIN (source \$FV_HOME/env.sh)}"
+: "${FV_BIN_SHA256:?set FV_BIN_SHA256 (source \$FV_HOME/env.sh)}"
+: "${FV_SRC:?set FV_SRC (source \$FV_HOME/env.sh)}"
+SRC="$FV_HOME/sa_src"
+DB="${FV_SA:-$FV_HOME/sa_db}"
+TMPROOT="$FV_HOME/sa_build_tmp"
+LOGDIR="$FV_HOME/sa_build_logs"
+mkdir -p "$DB" "$TMPROOT" "$LOGDIR" "$SRC/derived"
 
-# spliceai: allele-level, extremely dense (near every base of every gene body
-# scores 3+ alternates). Built at fastVEP's default sa-build chunk width
-# (--chunk-bits 20), a source this dense silently fails most lookups — see
-# Huang-lab/fastVEP#101, fixed upstream but not yet in this repo's pinned
-# fastvep binary as of the v6 build. Until that fix is deployed here, build at
-# a narrower chunk width via the two-step sa-build(--format osa) + sa-convert
-# path documented in fastVEP's docs/SUPPLEMENTARY_ANNOTATIONS.md, not a plain
-# build_once call:
-#   "$FASTVEP" sa-build --source spliceai -i "$SRC"/spliceai_scores.*.vcf.gz \
-#       -o /tmp/spliceai_v1 --assembly GRCh38 --format osa
-#   "$FASTVEP" sa-convert -i /tmp/spliceai_v1.osa -o "$DB/spliceai" --chunk-bits 16
-SPLICEAI_SRC="$(ls "$SRC"/spliceai_scores.masked.snv.ensembl_mane_v1.4.grch38.vcf.gz 2>/dev/null | head -1 || true)"
-if ls "$DB"/spliceai.* >/dev/null 2>&1; then
-    echo "[skip] spliceai already built"; sa_mark ok spliceai
-elif [ -n "$SPLICEAI_SRC" ]; then
-    echo "[skip] spliceai — source present but needs the sa-build(--format osa) + sa-convert(--chunk-bits) path above, not build_once; see comment" >&2
-    sa_mark missing spliceai
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+die() { echo "ERROR: $*" >&2; exit 4; }
+
+[ -x "$FV_BIN" ] || die "FV_BIN not executable: $FV_BIN"
+[ "$(sha256_of "$FV_BIN")" = "$FV_BIN_SHA256" ] || \
+    die "sha256($FV_BIN) != FV_BIN_SHA256 from env.sh — not the pinned binary; re-run setup_fastvep.sh"
+[ -d "$SRC" ] || die "sources dir missing: $SRC (run fetch_sa_sources.sh)"
+SCRIPTS="$FV_SRC/scripts"
+SA_SOURCES="$FV_SRC/analysis/acmg_benchmark/scripts/sa_sources"
+
+WORK="$(mktemp -d "$TMPROOT/${MODE}${CHROM}.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+
+BUILT=""; SKIPPED=""
+# build <source> <db base> <ext> <input> [extra sa-build args...]
+build() {
+    local source="$1" base="$2" ext="$3" in="$4"; shift 4
+    local out="$DB/$base.$ext" done="$DB/$base.$ext.done" log="$LOGDIR/$base.log"
+    if [ "$FORCE" = 0 ] && [ -s "$out" ] && [ -e "$done" ]; then
+        echo "[skip] $base.$ext (present with .done)" >&2
+        SKIPPED="$SKIPPED $base"; return 0
+    fi
+    [ -s "$in" ] || die "$base: input missing or empty: $in"
+    rm -f "$out" "$done"
+    mkdir -p "$WORK/$base"
+    echo "[build] $base.$ext  <-  $in" >&2
+    if ! "$FV_BIN" sa-build --source "$source" -i "$in" -o "$WORK/$base/$base" \
+            --assembly GRCh38 --no-progress "$@" > "$log" 2>&1; then
+        cat "$log" >&2
+        die "$base: fastvep sa-build failed (log: $log); nothing published"
+    fi
+    [ -s "$WORK/$base/$base.$ext" ] || {
+        cat "$log" >&2
+        ls -l "$WORK/$base" >&2
+        die "$base: sa-build exited 0 but wrote no $base.$ext (extension changed upstream?)"
+    }
+    mv -f "$WORK/$base/$base.$ext" "$out"
+    local in_sha=""
+    [ -s "$in.sha256" ] && in_sha="$(cat "$in.sha256")"
+    {
+        echo "built_utc     $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "source        $source"
+        echo "input         $in"
+        echo "input_sha256  ${in_sha:-not recorded (derived file)}"
+        echo "args          --assembly GRCh38 --no-progress $*"
+        echo "fastvep       $FV_BIN"
+        echo "fastvep_sha256 $FV_BIN_SHA256"
+        echo "output_sha256 $(sha256_of "$out")"
+        echo "host          $(hostname 2>/dev/null || echo unknown)  LSB_JOBID=${LSB_JOBID:-}"
+    } > "$done"
+    rm -rf "${WORK:?}/$base"
+    BUILT="$BUILT $base"
+}
+is_done() { [ -s "$DB/$1" ] && [ -e "$DB/$1.done" ]; }
+
+if [ "$MODE" = single ]; then
+    # clinvar: the dated release fetch_sa_sources.sh recorded and md5-verified.
+    [ -s "$SRC/CLINVAR_DATE" ] || die "no $SRC/CLINVAR_DATE (run fetch_sa_sources.sh)"
+    CV="$SRC/clinvar_$(cat "$SRC/CLINVAR_DATE").vcf.gz"
+    [ -e "$CV.md5.ok" ] || die "$CV was not md5-verified by fetch_sa_sources.sh"
+    build clinvar clinvar osa2 "$CV"
+
+    build clinvar_protein clinvar_protein oga "$SRC/variant_summary.txt.gz"
+    build gnomad_genes gnomad_genes oga "$SRC/gnomad.v4.1.constraint_metrics.tsv"
+
+    # omim (json key) = ClinGen Gene-Disease Validity by default, per ACMG_SETUP.md.
+    if [ "$USE_OMIM" = 1 ]; then
+        build omim omim oga "$SRC/genemap2.txt"
+    elif is_done omim.oga && [ "$FORCE" = 0 ]; then
+        build omim omim oga "$SRC/derived/clingen_gdv.tsv"   # reports the skip
+    else
+        shopt -s nullglob; cg=("$SRC"/clingen_gene_validity_*.csv); shopt -u nullglob
+        [ ${#cg[@]} -eq 1 ] || die "expected exactly one clingen_gene_validity_*.csv in $SRC, found ${#cg[@]}"
+        # Two positional arguments: input CSV, output TSV.
+        python3 "$SA_SOURCES/clingen_gdv_to_oga.py" "${cg[0]}" "$WORK/clingen_gdv.tsv" \
+            2> "$LOGDIR/clingen_gdv_to_oga.log" || { cat "$LOGDIR/clingen_gdv_to_oga.log" >&2; die "clingen_gdv_to_oga.py failed"; }
+        cat "$LOGDIR/clingen_gdv_to_oga.log" >&2
+        cp -f "$WORK/clingen_gdv.tsv" "$SRC/derived/clingen_gdv.tsv"   # check_sa_db.sh reads it
+        build omim omim oga "$SRC/derived/clingen_gdv.tsv"
+    fi
+
+    if is_done repeatmasker.osi && [ "$FORCE" = 0 ]; then
+        echo "[skip] repeatmasker.osi (present with .done)" >&2; SKIPPED="$SKIPPED repeatmasker"
+    else
+        [ -s "$SRC/rmsk.txt.gz" ] || die "repeatmasker: missing $SRC/rmsk.txt.gz"
+        python3 "$SA_SOURCES/repeatmasker_to_bed.py" "$SRC/rmsk.txt.gz" > "$WORK/repeatmasker.bed" \
+            2> "$LOGDIR/repeatmasker_to_bed.log" || { cat "$LOGDIR/repeatmasker_to_bed.log" >&2; die "repeatmasker_to_bed.py failed"; }
+        cat "$LOGDIR/repeatmasker_to_bed.log" >&2
+        # --name repeatmasker is load-bearing: the classifier finds BP3's track by a key containing "repeat".
+        build custom_bed repeatmasker osi "$WORK/repeatmasker.bed" --name repeatmasker
+    fi
 else
-    sa_missing spliceai "put spliceai_scores.masked.snv.ensembl_mane_v1.4.grch38.vcf.gz in $SRC, then use the two-step path above"
+    c="$CHROM"
+    G="$SRC/gnomad.exomes.v4.1.sites.chr${c}.vcf.bgz"
+    build gnomad "gnomad_chr${c}" osa2 "$G" --chunk-bits 16
+
+    # SpliceAI and PhyloP are distilled from the same gnomAD file (its
+    # spliceai_ds_max and phylop INFO fields). --url points the extractor at the
+    # local .bgz; with no --regions it reads the whole chromosome via tabix.
+    if [ "$FORCE" = 0 ] && is_done "spliceai_chr${c}.osa2" && is_done "phylop_chr${c}.osa2"; then
+        echo "[skip] spliceai_chr${c}.osa2 phylop_chr${c}.osa2 (present with .done)" >&2
+        SKIPPED="$SKIPPED spliceai_chr${c} phylop_chr${c}"
+    else
+        [ -s "$G" ] && [ -s "$G.tbi" ] || die "chr$c: need $G and its .tbi for extract_gnomad_scores.py"
+        echo "[extract] spliceai/phylop chr$c <- $G" >&2
+        python3 "$SCRIPTS/extract_gnomad_scores.py" --chrom "$c" --url "$G" --out-dir "$WORK/extract" \
+            2> "$LOGDIR/extract_gnomad_scores_chr${c}.log" || {
+            cat "$LOGDIR/extract_gnomad_scores_chr${c}.log" >&2; die "extract_gnomad_scores.py chr$c failed"; }
+        cat "$LOGDIR/extract_gnomad_scores_chr${c}.log" >&2
+        build spliceai "spliceai_chr${c}" osa2 "$WORK/extract/spliceai_chr${c}.vcf" --chunk-bits 16
+        build phylop "phylop_chr${c}" osa2 "$WORK/extract/phylop_chr${c}.tsv" --chunk-bits 16
+    fi
+
+    if [ "$c" = Y ]; then
+        echo "[skip] revel_chrY: REVEL v1.3 has no chrY records, and sa-build refuses an empty database" >&2
+    else
+        build revel "revel_chr${c}" osa2 "$SRC/revel/revel_chr${c}.csv"
+    fi
+
+    if [ "$DELETE_GNOMAD" = 1 ]; then
+        if is_done "gnomad_chr${c}.osa2" && is_done "spliceai_chr${c}.osa2" && is_done "phylop_chr${c}.osa2"; then
+            echo "[clean] --delete-gnomad-src: removing $G(.tbi)" >&2
+            rm -f "$G" "$G.tbi"
+        else
+            echo "[clean] NOT deleting $G: not every database built from it has a .done" >&2
+        fi
+    fi
 fi
 
-# --- gnomAD per-chromosome ---
-chrs=("$@")
-if [ ${#chrs[@]} -eq 0 ]; then
-    shopt -s nullglob
-    for f in "$SRC"/gnomad.exomes.*.sites.chr*.vcf.bgz; do
-        c="$(basename "$f" | sed -E 's/.*\.sites\.chr([0-9XY]+)\.vcf\.bgz/\1/')"
-        chrs+=("$c")
-    done
-    shopt -u nullglob
-fi
-# ${chrs[@]+...} guards the expansion: under `set -u`, bash 4.3 and older abort
-# on "${chrs[@]}" when the array is empty, which is the no-gnomAD-source case.
-if [ ${#chrs[@]} -eq 0 ]; then
-    sa_missing gnomad "put gnomad.exomes.*.sites.chrN.vcf.bgz in $SRC, or pass chromosomes as arguments"
-else
-    for c in ${chrs[@]+"${chrs[@]}"}; do
-        f="$(ls "$SRC"/gnomad.exomes.*.sites.chr${c}.vcf.bgz 2>/dev/null | head -1 || true)"
-        [ -n "$f" ] || { echo "[skip] no gnomAD source for chr$c in $SRC" >&2; sa_mark missing "gnomad_chr${c}"; continue; }
-        build_once gnomad "gnomad_chr${c}" "$f"
-    done
-fi
-
-echo "[done] databases in $DB:"
-ls -lh "$DB"
-
-# State what was produced against what the ACMG classifier reads. fastVEP does
-# not fail when a configured source is absent — it returns no annotation for it
-# — so an incomplete sa_db changes ACMG calls silently. Saying so here is the
-# only place a human sees it before the calls are made.
-echo
-echo "[summary] sources present:${SA_OK:- none}"
-if [ -n "$SA_MISSING" ]; then
-    echo "[summary] sources MISSING:$SA_MISSING" >&2
-    echo "[summary] ACMG calls made against this sa_db will differ from a complete build." >&2
-    [ "${SA_STRICT:-0}" = "1" ] && exit 4
-fi
-exit 0
+echo "[done] mode=$MODE${CHROM:+ chr$CHROM} built:${BUILT:- none} skipped:${SKIPPED:- none}" >&2
+echo "[done] verify the whole stack with: acmg_fastvep/check_sa_db.sh" >&2
