@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Per-chromosome driver for build_acmg_carriers.py.
+# Per-chromosome driver for build_acmg_carriers.py / build_acmg_carriers_pick.py.
 #
-# Runs the retrieval-only MANE-select script over every *.fastvep.vcf.gz
+# Runs the chosen carriers script over every *.fastvep.vcf.gz
 # chunk in one chromosome's directory IN PARALLEL (xargs -P — same pattern
 # already used in run_fastvep_batch.sh's GT extraction and
 # build_carrier_matrix.sh's per-chunk work), then concatenates the per-chunk
@@ -19,18 +19,22 @@ Required:
 
 Options:
   -j, --jobs <N>    parallel chunk workers (default 4)
-  --mode <mane|pick>
-                    mane (default): build_acmg_carriers.py, MANE Select only.
-                    pick: build_acmg_carriers_pick.py, per-gene pick fallback.
+  --mode <fastvep_pick|mane|pick>
+                    fastvep_pick (default; fastVEP v0.5.0 output): build_acmg_carriers_pick.py
+                      --selection fastvep_pick, i.e. fastVEP's own PICK=1 block per
+                      (allele, gene); fails on output without a PICK field.
+                    mane: build_acmg_carriers.py, MANE Select only.
+                    pick: DEPRECATED build_acmg_carriers_pick.py --selection python_pick
+                      (Python port of the pick order), for comparing with v6 output.
   --pick-order <s>  (pick mode) passed through as --pick-order
   --keep-flanking-genes
-                    (pick mode) keep upstream/downstream-only gene rows
+                    (pick / fastvep_pick) keep upstream/downstream-only gene rows
 USAGE
     exit 2
 }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-INDIR=""; OUTDIR=""; JOBS=4; MODE=mane; PICK_ORDER=""; KEEP_FLANKING=0
+INDIR=""; OUTDIR=""; JOBS=4; MODE=fastvep_pick; PICK_ORDER=""; KEEP_FLANKING=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --in-dir)    INDIR="$2"; shift 2 ;;
@@ -54,10 +58,19 @@ case "$MODE" in
               echo "ERROR: --pick-order/--keep-flanking-genes need --mode pick" >&2; exit 2
           fi ;;
     pick) SCRIPT="build_acmg_carriers_pick.py"
-          EXTRA='--stats-json "$PARTS/${name}.stats.json"'
+          echo "[acmg-carriers] WARN: --mode pick (python_pick) is DEPRECATED; fastVEP v0.5.0" \
+               "output should use --mode fastvep_pick" >&2
+          EXTRA='--selection python_pick --stats-json "$PARTS/${name}.stats.json"'
           if [ -n "$PICK_ORDER" ]; then EXTRA="$EXTRA --pick-order $(printf '%q' "$PICK_ORDER")"; fi
           if [ "$KEEP_FLANKING" = 1 ]; then EXTRA="$EXTRA --keep-flanking-genes"; fi ;;
-    *) echo "ERROR: --mode must be mane or pick (got $MODE)" >&2; exit 2 ;;
+    fastvep_pick)
+          SCRIPT="build_acmg_carriers_pick.py"
+          if [ -n "$PICK_ORDER" ]; then
+              echo "ERROR: --pick-order needs --mode pick; fastvep_pick uses fastVEP's own PICK flag" >&2; exit 2
+          fi
+          EXTRA='--selection fastvep_pick --stats-json "$PARTS/${name}.stats.json"'
+          if [ "$KEEP_FLANKING" = 1 ]; then EXTRA="$EXTRA --keep-flanking-genes"; fi ;;
+    *) echo "ERROR: --mode must be fastvep_pick, mane or pick (got $MODE)" >&2; exit 2 ;;
 esac
 # Never write into the directory being read: the fastVEP outputs are inputs only.
 # Checked before anything is created, so a bad --outdir leaves --in-dir untouched.
@@ -133,7 +146,7 @@ if [ "$n_variants" -ne "${#chunks[@]}" ] || [ "$n_carriers" -ne "${#chunks[@]}" 
     exit 4
 fi
 
-if [ "$MODE" = pick ]; then
+if [ "$MODE" = pick ] || [ "$MODE" = fastvep_pick ]; then
     # One summary for the whole chromosome (sum of every chunk's counters),
     # plus each chunk's own stderr, kept next to the tables.
     python3 "$HERE/build_acmg_carriers_pick.py" --aggregate "$WORK"/parts/*.stats.json \

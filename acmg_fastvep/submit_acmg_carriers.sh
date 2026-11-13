@@ -12,6 +12,8 @@
 #   acmg_fastvep/submit_acmg_carriers.sh --batch-root <dir> [--only chr21]
 #   acmg_fastvep/submit_acmg_carriers.sh --batch-root <dir> --mode pick \
 #       --out-root <new dir, e.g. results-acmg-pick/> [--only chr21]
+#   acmg_fastvep/submit_acmg_carriers.sh --batch-root <dir> --mode fastvep_pick \
+#       --dir-suffix _fv050 --out-root <new dir> [--only chr21]   # fastVEP v0.5.0 output
 set -euo pipefail
 
 usage() {
@@ -19,7 +21,7 @@ usage() {
 Usage: submit_acmg_carriers.sh --batch-root <dir> [options]
 
 Required:
-  --batch-root <dir>   dir containing results-fastvep-chr*_v6/ subdirs
+  --batch-root <dir>   dir containing results-fastvep-chr*<suffix>/ subdirs
 
 Options:
   --only <chrspec>      only submit this chromosome. An exact name ("chr1" or
@@ -35,8 +37,13 @@ Options:
                         not --batch-root itself nor inside any of its
                         results-fastvep-*/results-carriers-* dirs, e.g.
                         <batch-root>/results-acmg-pick)
-  --mode <mane|pick>    mane (default): MANE Select only (build_acmg_carriers.py)
-                        pick: per-gene pick fallback (build_acmg_carriers_pick.py)
+  --dir-suffix <s>      suffix of the results-fastvep-chrN<s>/ dirs (default _v6;
+                        _fv050 for the fastVEP v0.5.0 runs)
+  --mode <mane|pick|fastvep_pick>
+                        mane (default): MANE Select only (build_acmg_carriers.py)
+                        pick: DEPRECATED Python pick port (build_acmg_carriers_pick.py)
+                        fastvep_pick: fastVEP's own PICK=1 block (v0.5.0 output);
+                          like pick, needs --out-root
   --pick-order <s>      pick mode: tier order (default in the script)
   --keep-flanking-genes pick mode: keep upstream/downstream-only gene rows
   -n, --cores <N>       cores per chromosome task (default 4, from the task file)
@@ -50,7 +57,7 @@ USAGE
 }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BATCH_ROOT=""; ONLY=""; OUT_ROOT=""; JOBS=""; CORES=""; WALL=""; EXCLUDE=(); MODE=mane; PICK_ORDER=""; KEEP_FLANKING=0
+SUFFIX="_v6"; BATCH_ROOT=""; ONLY=""; OUT_ROOT=""; JOBS=""; CORES=""; WALL=""; EXCLUDE=(); MODE=mane; PICK_ORDER=""; KEEP_FLANKING=0
 PROJECT="${MINERVA_ALLOCATION:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -62,6 +69,7 @@ while [ $# -gt 0 ]; do
         -W|--wall-time) WALL="$2"; shift 2 ;;
         --exclude)    EXCLUDE+=("$2"); shift 2 ;;
         --mode)       MODE="$2"; shift 2 ;;
+        --dir-suffix) SUFFIX="$2"; shift 2 ;;
         --pick-order) PICK_ORDER="$2"; shift 2 ;;
         --keep-flanking-genes) KEEP_FLANKING=1; shift ;;
         -P|--project) PROJECT="$2"; shift 2 ;;
@@ -77,7 +85,11 @@ case "$MODE" in
               echo "ERROR: --pick-order/--keep-flanking-genes need --mode pick" >&2; exit 2
           fi
           OUT_ROOT="${OUT_ROOT:-$BATCH_ROOT}" ;;
-    pick) [ -n "$OUT_ROOT" ] || { echo "ERROR: --mode pick needs an explicit --out-root" >&2; exit 2; }
+    pick|fastvep_pick)
+          [ -n "$OUT_ROOT" ] || { echo "ERROR: --mode $MODE needs an explicit --out-root" >&2; exit 2; }
+          if [ "$MODE" = fastvep_pick ] && [ -n "$PICK_ORDER" ]; then
+              echo "ERROR: --pick-order needs --mode pick" >&2; exit 2
+          fi
           # The fastVEP chunk dirs and the MANE-only result dirs are read-only
           # for a pick run. A separate subfolder of the batch root (e.g.
           # <batch>/results-acmg-pick) is fine; the batch root itself, or
@@ -97,16 +109,16 @@ case "$MODE" in
           # Fail at submit time, not in 24 array tasks, on a bad order.
           python3 -c 'import sys; sys.path[:0]=[sys.argv[1], sys.argv[1]+"/.."]; import build_acmg_carriers_pick as P; P.parse_pick_order(sys.argv[2] or P.DEFAULT_PICK_ORDER)' \
               "$HERE" "$PICK_ORDER" || { echo "ERROR: bad --pick-order" >&2; exit 2; } ;;
-    *) echo "ERROR: --mode must be mane or pick" >&2; exit 2 ;;
+    *) echo "ERROR: --mode must be mane, pick or fastvep_pick" >&2; exit 2 ;;
 esac
 mkdir -p "$OUT_ROOT"
 
 # Discover chromosome directories. One glob, no per-chromosome loop of bsub
 # calls — the manifest just records what the array will index into.
-# exact_dir <spec>: results-fastvep-<spec>/ or results-fastvep-<spec>_v6/, if it exists.
+# exact_dir <spec>: results-fastvep-<spec>/ or results-fastvep-<spec><suffix>/, if it exists.
 exact_dir() {
     local c
-    for c in "$BATCH_ROOT/results-fastvep-$1" "$BATCH_ROOT/results-fastvep-${1}_v6"; do
+    for c in "$BATCH_ROOT/results-fastvep-$1" "$BATCH_ROOT/results-fastvep-${1}${SUFFIX}"; do
         if [ -d "$c" ]; then printf '%s/\n' "$c"; return 0; fi
     done
     return 1
@@ -119,16 +131,16 @@ if [ -n "$ONLY" ]; then
         dirs=("$BATCH_ROOT"/results-fastvep-*"$ONLY"*/)
     fi
 else
-    dirs=("$BATCH_ROOT"/results-fastvep-chr*_v6/)
+    dirs=("$BATCH_ROOT"/results-fastvep-chr*"$SUFFIX"/)
 fi
 shopt -u nullglob
 for x in ${EXCLUDE[@]+"${EXCLUDE[@]}"}; do
-    xd="$(exact_dir "$x")" || { echo "ERROR: --exclude $x: no results-fastvep-$x[_v6]/ under $BATCH_ROOT" >&2; exit 3; }
+    xd="$(exact_dir "$x")" || { echo "ERROR: --exclude $x: no results-fastvep-${x}[${SUFFIX}]/ under $BATCH_ROOT" >&2; exit 3; }
     kept=()
     for d in "${dirs[@]}"; do [ "${d%/}" = "${xd%/}" ] || kept+=("$d"); done
     dirs=(${kept[@]+"${kept[@]}"})
 done
-[ ${#dirs[@]} -gt 0 ] || { echo "ERROR: no results-fastvep-chr*_v6/ dirs left under $BATCH_ROOT (--only=$ONLY --exclude=${EXCLUDE[*]-})" >&2; exit 3; }
+[ ${#dirs[@]} -gt 0 ] || { echo "ERROR: no results-fastvep-chr*$SUFFIX/ dirs left under $BATCH_ROOT (--only=$ONLY --exclude=${EXCLUDE[*]-})" >&2; exit 3; }
 JOBS="${JOBS:-${CORES:-4}}"
 LIMITS=()
 if [ -n "$CORES" ]; then LIMITS+=(-n "$CORES"); fi

@@ -46,7 +46,7 @@ def run(tmp_path, records, *extra):
     vcf = write_vcf(tmp_path, records)
     ov, oc = tmp_path / "v.tsv", tmp_path / "c.tsv"
     res = subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf), "--out-variants", str(ov),
-                          "--out-carriers", str(oc), *extra],
+                          "--out-carriers", str(oc), "--selection", "python_pick", *extra],
                          check=True, capture_output=True, text=True)
     variants = list(csv.DictReader(ov.open(), delimiter="\t"))
     carriers = list(csv.DictReader(oc.open(), delimiter="\t"))
@@ -317,10 +317,11 @@ def test_compare_mane_vs_pick(tmp_path):
     md, pd = mane_root / "results-carriers-chrX_v6", pick_root / "results-carriers-pick-chrX_v6"
     md.mkdir(parents=True)
     pd.mkdir(parents=True)
-    for script, d in (("build_acmg_carriers.py", md), ("build_acmg_carriers_pick.py", pd)):
+    for script, d, extra in (("build_acmg_carriers.py", md, []),
+                             ("build_acmg_carriers_pick.py", pd, ["--selection", "python_pick"])):
         subprocess.run([sys.executable, str(HERE.parent / script), "--vcf", str(vcf),
                         "--out-variants", str(d / "acmg_variants.tsv"),
-                        "--out-carriers", str(d / "acmg_carriers.tsv")],
+                        "--out-carriers", str(d / "acmg_carriers.tsv"), *extra],
                        check=True, capture_output=True)
     # refuses to write into a MANE result dir
     bad = subprocess.run([sys.executable, str(HERE.parent / "compare_acmg_pick_vs_mane.py"),
@@ -443,7 +444,7 @@ def test_functional_and_fv_columns(tmp_path):
     vcf.write_text(header + body, encoding="utf-8")
     ov, oc = tmp_path / "v.tsv", tmp_path / "c.tsv"
     res = subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf), "--out-variants",
-                          str(ov), "--out-carriers", str(oc)],
+                          str(ov), "--out-carriers", str(oc), "--selection", "python_pick"],
                          check=True, capture_output=True, text=True)
     rows = list(csv.DictReader(ov.open(), delimiter="\t"))
     assert list(rows[0].keys())[:26] == list(P.VARIANT_COLUMNS[:26])  # old columns unchanged
@@ -502,7 +503,7 @@ def test_extract_gene_carriers(tmp_path):
         sub = tmp_path / chrom
         sub.mkdir()
         vcf = write_vcf(sub, rr)
-        subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf),
+        subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf), "--selection", "python_pick",
                         "--out-variants", str(d / "acmg_variants.tsv"),
                         "--out-carriers", str(d / "acmg_carriers.tsv")],
                        check=True, capture_output=True)

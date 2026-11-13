@@ -3,7 +3,11 @@
 
 Reads (never writes) both result trees:
   --mane-root  dir holding results-carriers-<chr>/       (build_acmg_carriers.py)
-  --pick-root  dir holding results-carriers-pick-<chr>/  (build_acmg_carriers_pick.py)
+  --pick-root  dir holding results-carriers-pick-<chr>/  (build_acmg_carriers_pick.py),
+               or results-carriers-fastvep_pick-<chr>/ with
+               --pick-prefix results-carriers-fastvep_pick- (fastVEP v0.5.0 PICK=1)
+  --strip-dir-suffix  match chromosomes by the name without its run suffix
+               (chr21_v6 == chr21_fv050), to compare runs of two fastVEP versions
 and writes TSVs into --out (normally <pick-root>/comparison/):
 
   overall.tsv               P/LP (variant, gene) rows, unique P/LP variants, carrier
@@ -32,13 +36,15 @@ csv.field_size_limit(sys.maxsize)
 PLP_LABELS = {"Pathogenic", "Likely_pathogenic"}
 
 
-def _chr_dirs(root: str, prefix: str) -> dict[str, str]:
+def _chr_dirs(root: str, prefix: str, strip_suffix: bool = False) -> dict[str, str]:
     out = {}
     for d in sorted(glob.glob(os.path.join(root, prefix + "*"))):
         name = os.path.basename(d.rstrip("/"))[len(prefix):]
-        # "results-carriers-" also prefixes "results-carriers-pick-"; keep them apart.
-        if prefix == "results-carriers-" and name.startswith("pick-"):
+        # "results-carriers-" also prefixes the pick dirs; keep them apart.
+        if prefix == "results-carriers-" and name.startswith(("pick-", "fastvep_pick-")):
             continue
+        if strip_suffix and "_" in name:
+            name = name.rsplit("_", 1)[0]
         if os.path.isfile(os.path.join(d, "acmg_variants.tsv")):
             out[name] = d
     return out
@@ -99,9 +105,14 @@ def main(argv=None) -> int:
     ap.add_argument("--mane-root", required=True)
     ap.add_argument("--pick-root", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--pick-prefix", default="results-carriers-pick-",
+                    help="dir prefix on the pick side (results-carriers-fastvep_pick- for "
+                         "fastvep_pick output)")
+    ap.add_argument("--strip-dir-suffix", action="store_true",
+                    help="match chrN_<suffix> dirs on chrN alone (e.g. _v6 against _fv050)")
     args = ap.parse_args(argv)
 
-    mane_dirs = _chr_dirs(args.mane_root, "results-carriers-")
+    mane_dirs = _chr_dirs(args.mane_root, "results-carriers-", args.strip_dir_suffix)
     # The MANE-only result dirs are read-only here. A separate subfolder of
     # --mane-root (e.g. <batch>/results-acmg-pick/comparison) is fine.
     out_real = os.path.realpath(args.out)
@@ -110,7 +121,7 @@ def main(argv=None) -> int:
         if out_real == pr or (protected != args.mane_root and out_real.startswith(pr + os.sep)):
             ap.error(f"--out must not be {protected} or inside a MANE result dir")
 
-    pick_dirs = _chr_dirs(args.pick_root, "results-carriers-pick-")
+    pick_dirs = _chr_dirs(args.pick_root, args.pick_prefix, args.strip_dir_suffix)
     common = sorted(set(mane_dirs) & set(pick_dirs))
     for name, only in (("MANE", set(mane_dirs) - set(pick_dirs)),
                        ("pick", set(pick_dirs) - set(mane_dirs))):

@@ -14,7 +14,8 @@
 #
 # Reads its assigned chromosome directory from $AC_MANIFEST at line
 # $LSB_JOBINDEX, and writes into $AC_OUT_ROOT/results-carriers-<chrname>/
-# (mane mode) or $AC_OUT_ROOT/results-carriers-pick-<chrname>/ (AC_MODE=pick).
+# (mane mode), $AC_OUT_ROOT/results-carriers-pick-<chrname>/ (AC_MODE=pick) or
+# $AC_OUT_ROOT/results-carriers-fastvep_pick-<chrname>/ (AC_MODE=fastvep_pick).
 set -euo pipefail
 
 : "${AC_MANIFEST:?set AC_MANIFEST=<manifest file, one chr dir per line>}"
@@ -39,6 +40,9 @@ MODE_ARGS=(--mode "$AC_MODE")
 if [ "$AC_MODE" = pick ]; then
     OUT="$AC_OUT_ROOT/results-carriers-pick-${chr_name}"
     if [ -n "${AC_PICK_ORDER:-}" ]; then MODE_ARGS+=(--pick-order "$AC_PICK_ORDER"); fi
+    if [ "${AC_KEEP_FLANKING:-0}" = 1 ]; then MODE_ARGS+=(--keep-flanking-genes); fi
+elif [ "$AC_MODE" = fastvep_pick ]; then
+    OUT="$AC_OUT_ROOT/results-carriers-fastvep_pick-${chr_name}"
     if [ "${AC_KEEP_FLANKING:-0}" = 1 ]; then MODE_ARGS+=(--keep-flanking-genes); fi
 else
     OUT="$AC_OUT_ROOT/results-carriers-${chr_name}"

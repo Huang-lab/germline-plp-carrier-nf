@@ -8,11 +8,28 @@ is which CSQ block a (variant, gene) row reports:
 
   * MANE-only  : the MANE_SELECT block, else the variant is flagged
                  NO_MANE_TRANSCRIPT and nothing is reported for it.
-  * this script: one block per (variant, gene) chosen by the same hierarchy
-                 fastVEP's `--pick-allele-gene` uses, so a gene without a MANE
+  * this script: one block per (variant, gene), so a gene without a MANE
                  transcript still gets a call (canonical, then TSL, ...).
 
-The tier semantics are a line-for-line port of Huang-lab/fastVEP
+Two ways of choosing that block (--selection):
+
+  * fastvep_pick (DEFAULT; fastVEP v0.5.0 output from run_fastvep.sh --acmg,
+    which passes --flag-pick-allele-gene): the block fastVEP itself marked
+    PICK=1 for that (allele, gene). No pick logic is re-implemented here; the
+    CSQ must carry a PICK field (error otherwise). An (allele, gene) with no
+    PICK=1 block, or with more than one, is not resolved: its row is flagged
+    (acmg_label NO_PICK_FLAG / MULTIPLE_PICK_FLAGS, is_acmg_PLP 0, pick_flag
+    says which transcripts) and counted in the summary. acmg_label_mane is the
+    MANE Select block's label, or NO_MANE_TRANSCRIPT.
+  * python_pick (DEPRECATED; kept for a one-time comparison against the v6
+    outputs, which have no PICK field): the Python port of fastVEP's pick
+    hierarchy described below.
+
+Both read fields by CSQ header name, so the trailing ACMG_DISORDERS field of
+v0.5.0 (`INHERITANCE:CLASS:CRITERIA` per mode of inheritance, joined by '&')
+is tolerated and copied to the acmg_disorders column.
+
+python_pick: the tier semantics are a line-for-line port of Huang-lab/fastVEP
 crates/fastvep-annotate/src/pick.rs (`pick_score`, `appris_rank`,
 `pick_key_with`) and the consequence severity table of
 crates/fastvep-core/src/consequence.rs (`Consequence::rank`). Every tier
@@ -54,6 +71,10 @@ from build_acmg_carriers import (  # noqa: E402
 )
 
 NO_TRANSCRIPT_SENTINEL = "NO_TRANSCRIPT"
+NO_MANE_SENTINEL = "NO_MANE_TRANSCRIPT"
+NO_PICK_SENTINEL = "NO_PICK_FLAG"
+MULTI_PICK_SENTINEL = "MULTIPLE_PICK_FLAGS"
+SELECTIONS = ("fastvep_pick", "python_pick")
 
 # --------------------------------------------------------------------------
 # Pick hierarchy (port of fastVEP pick.rs)
@@ -213,7 +234,7 @@ class Block:
     """One CSQ block (one transcript x allele) with the fields the pick needs."""
     __slots__ = ("f", "feature", "gene_id", "symbol", "consequence",
                  "mane_select", "mane_plus_clinical", "canonical", "appris",
-                 "tsl", "biotype", "ccds")
+                 "tsl", "biotype", "ccds", "allele", "pick")
 
     def __init__(self, f: list[str], idx: dict[str, int]):
         g = lambda name: _field(f, idx.get(name, -1))  # noqa: E731
@@ -229,6 +250,8 @@ class Block:
         self.tsl = g("TSL")
         self.biotype = g("BIOTYPE")
         self.ccds = g("CCDS")
+        self.allele = g("Allele")
+        self.pick = g("PICK")      # "1" on fastVEP's own choice (--flag-pick-allele-gene)
 
     @property
     def is_mane_select(self) -> bool:
@@ -306,6 +329,9 @@ VARIANT_COLUMNS = (
     "clinvar_significance", "clinvar_review_status",
     "gnomad_af", "gnomad_grpmax_af", "gnomad_grpmax_pop", "gnomad_hom_count",
     "revel", "gene_pli", "gene_loeuf",
+    # fastVEP v0.5.0: per-inheritance-mode calls (ACMG_DISORDERS), and whether
+    # fastVEP's PICK flag resolved this (allele, gene) to exactly one block
+    "acmg_disorders", "pick_flag",
 )
 VARIANT_HEADER = "\t".join(VARIANT_COLUMNS) + "\n"
 
@@ -421,7 +447,26 @@ def new_stats() -> dict:
         "flanking_rows_dropped", "flanking_plp_rows_dropped", "variants_all_flanking",
         "mane_rows", "fallback_rows", "mane_discordant_rows", "plp_rows",
         "multiallelic_records", "carrier_rows", "hemi_calls", "fv_allele_unmatched",
+        "no_pick_rows", "multi_pick_rows", "no_mane_rows",
     )} | {"by_tier": {}}
+
+
+def fastvep_pick(blocks: list[Block], idx: dict[str, int]):
+    """fastVEP's own choice for one (allele, gene): the block flagged PICK=1.
+
+    Returns (block, tier, pick_flag). block is None when fastVEP flagged none
+    or several; nothing is chosen here in that case."""
+    picks = [b for b in blocks if b.pick == "1"]
+    if len(picks) == 1:
+        return picks[0], "fastvep_pick", "ok"
+    if not picks:
+        return None, "", "no_pick"
+    detail = ",".join(f"{b.feature}={_LABEL.get(_acmg_of(b.f, idx)[0], _acmg_of(b.f, idx)[0])}"
+                      for b in sorted(picks, key=lambda b: b.feature))
+    return None, "", f"multi_pick:{detail}"
+
+
+_MAX_PICK_WARNINGS = 20
 
 
 def _acmg_of(f, idx):
@@ -432,7 +477,7 @@ def _acmg_of(f, idx):
 
 
 def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[str],
-                drop_flanking: bool = True) -> None:
+                drop_flanking: bool = True, selection: str = "fastvep_pick") -> None:
     idx: dict[str, int] = {}
     spliceai_id = None
     fv_formats: dict[str, tuple] = {}
@@ -461,8 +506,15 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
                     print(f"ERROR: CSQ ({path}) lacks {missing} — was fastVEP run with --acmg?",
                           file=_sys.stderr)
                     _sys.exit(2)
+                if selection == "fastvep_pick" and "PICK" not in idx:
+                    print(f"ERROR: CSQ ({path}) has no PICK field. --selection fastvep_pick reads "
+                          "fastVEP's own PICK=1 flag, written only by fastVEP >= v0.5.0 run with "
+                          "--flag-pick-allele-gene (run_fastvep.sh --acmg). For older output use "
+                          "--selection python_pick (deprecated) or build_acmg_carriers.py (MANE).",
+                          file=_sys.stderr)
+                    _sys.exit(2)
                 absent = sorted({_PICK_FIELDS[c] for c in order} - set(idx))
-                if absent:
+                if absent and selection == "python_pick":
                     # A tier whose field is absent scores every transcript the
                     # same, so it silently decides nothing. Say so once per file.
                     print(f"WARN: CSQ ({path}) has no {absent} — those --pick-order tiers "
@@ -497,12 +549,14 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
             # Group candidate blocks by gene. Scaffold / featureless blocks
             # (no transcript) and blocks with no gene (intergenic, regulatory)
             # are never candidates, as in pick.rs.
-            by_gene: dict[str, list[Block]] = {}
+            # fastvep_pick groups per (allele, gene), as --flag-pick-allele-gene does.
+            by_gene: dict[tuple, list[Block]] = {}
             for raw in raw_blocks:
                 b = Block(raw.split("|"), idx)
                 if not _present(b.feature) or not _present(b.gene_key):
                     continue
-                by_gene.setdefault(b.gene_key, []).append(b)
+                key = (b.allele, b.gene_key) if selection == "fastvep_pick" else ("", b.gene_key)
+                by_gene.setdefault(key, []).append(b)
 
             if not by_gene:
                 stats["no_transcript"] += 1
@@ -522,11 +576,45 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
             rows_written = 0
             plp_genes: list[str] = []
             for gene_blocks in by_gene.values():
-                picked, tier = pick_block(gene_blocks, order)
+                if selection == "fastvep_pick":
+                    picked, tier, pick_flag = fastvep_pick(gene_blocks, idx)
+                else:
+                    (picked, tier), pick_flag = pick_block(gene_blocks, order), ""
                 if drop_flanking and is_flanking_only(gene_blocks):
                     stats["flanking_rows_dropped"] += 1
-                    if _field(picked.f, idx["ACMG"]) in _PLP:
+                    if picked is not None and _field(picked.f, idx["ACMG"]) in _PLP:
                         stats["flanking_plp_rows_dropped"] += 1
+                    continue
+
+                mane_blocks = sorted((b for b in gene_blocks if b.is_mane_select),
+                                     key=lambda b: b.feature)
+                m_sh = _acmg_of(mane_blocks[0].f, idx)[0] if mane_blocks else None
+
+                if picked is None:
+                    # fastVEP flagged no block, or several, for this (allele, gene).
+                    # Reported, never resolved here: that would be a pick of our own.
+                    first = gene_blocks[0]
+                    sentinel = NO_PICK_SENTINEL if pick_flag == "no_pick" else MULTI_PICK_SENTINEL
+                    stats["no_pick_rows" if pick_flag == "no_pick" else "multi_pick_rows"] += 1
+                    n_warn = stats["no_pick_rows"] + stats["multi_pick_rows"]
+                    if n_warn <= _MAX_PICK_WARNINGS:
+                        print(f"WARN: {chrom}:{pos} {ref}>{alt} gene={first.symbol or first.gene_id}: "
+                              f"{pick_flag} (fastVEP PICK=1 on {len([b for b in gene_blocks if b.pick == '1'])} "
+                              f"of {len(gene_blocks)} blocks); row flagged {sentinel}, not P/LP",
+                              file=_sys.stderr)
+                    picks = [b.feature for b in gene_blocks if b.pick == "1"]
+                    row = [chrom, pos, ref, alt, first.symbol or first.gene_id, sentinel, "",
+                           "0", "0", "0",
+                           ";".join(sorted({b.consequence for b in gene_blocks})),
+                           "", "", "", "", "", "", "", "", "", "",
+                           ";".join(picks), "", "",
+                           _LABEL.get(m_sh, m_sh) if m_sh is not None else NO_MANE_SENTINEL, "",
+                           "", "", "", "", "", "",
+                           *fv_variant, *fv_gene_columns(info_kv, fv_formats, first.symbol),
+                           "", pick_flag]
+                    out_variants.write("\t".join(row) + "\n")
+                    rows_written += 1
+                    stats["gene_rows"] += 1
                     continue
 
                 sh, codes = _acmg_of(picked.f, idx)
@@ -534,16 +622,16 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
                 is_plp = int(sh in _PLP)
                 func = {n: _field(picked.f, idx.get(n, -1)) for n in CSQ_FUNCTIONAL_FIELDS}
 
-                mane_blocks = sorted((b for b in gene_blocks if b.is_mane_select),
-                                     key=lambda b: b.feature)
-                if mane_blocks:
-                    m_sh, _ = _acmg_of(mane_blocks[0].f, idx)
+                if m_sh is not None:
                     label_mane = _LABEL.get(m_sh, m_sh)
                     discordant = int(is_plp != int(m_sh in _PLP))
                     stats["mane_discordant_rows"] += discordant
                     discordant_s = str(discordant)
                 else:
-                    label_mane, discordant_s = "", ""
+                    # python_pick keeps its v6 output (blank); fastvep_pick says so.
+                    label_mane = NO_MANE_SENTINEL if selection == "fastvep_pick" else ""
+                    discordant_s = ""
+                    stats["no_mane_rows"] += 1
 
                 gene = picked.symbol or picked.gene_id
                 row = [chrom, pos, ref, alt, gene, _LABEL.get(sh, sh), ";".join(codes),
@@ -555,7 +643,8 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
                        label_mane, discordant_s,
                        *(_field(picked.f, idx.get(n, -1)) for n in CSQ_EXTRA_FIELDS),
                        is_last_exon(func["EXON"]),
-                       *fv_variant, *fv_gene_columns(info_kv, fv_formats, picked.symbol)]
+                       *fv_variant, *fv_gene_columns(info_kv, fv_formats, picked.symbol),
+                       _field(picked.f, idx.get("ACMG_DISORDERS", -1)), pick_flag]
                 out_variants.write("\t".join(row) + "\n")
                 rows_written += 1
                 stats["gene_rows"] += 1
@@ -599,11 +688,18 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
                     out_carriers.write(f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene}\t{sample_name}\t{gt}\t{z}\n")
 
 
-def format_summary(stats: dict, order: list[str], drop_flanking: bool) -> str:
+def format_summary(stats: dict, order: list[str], drop_flanking: bool,
+                   selection: str = "python_pick") -> str:
     tiers = ", ".join(f"{k}={v}" for k, v in sorted(stats["by_tier"].items(),
                                                        key=lambda kv: -kv[1]))
+    how = ("selection=fastvep_pick (fastVEP PICK=1)" if selection == "fastvep_pick"
+           else f"selection=python_pick (DEPRECATED) order={','.join(order)}")
     return (
-        f"[build_acmg_carriers_pick] order={','.join(order)} drop_flanking={int(drop_flanking)}\n"
+        f"[build_acmg_carriers_pick] {how} drop_flanking={int(drop_flanking)}\n"
+        f"  fastVEP PICK flag: (allele, gene) rows with no PICK=1: {stats.get('no_pick_rows', 0)}; "
+        f"with more than one: {stats.get('multi_pick_rows', 0)}"
+        f"{'  <-- FLAGGED ROWS, see stderr' if stats.get('no_pick_rows', 0) + stats.get('multi_pick_rows', 0) else ''}\n"
+        f"  rows whose gene has no MANE Select block: {stats.get('no_mane_rows', 0)}\n"
         f"  {stats['total_variants']} variants -> {stats['gene_rows']} (variant, gene) rows "
         f"({stats['multi_gene_variants']} variants with 2+ gene rows)\n"
         f"  picked MANE Select: {stats['mane_rows']}; fallback (non-MANE): {stats['fallback_rows']}\n"
@@ -627,9 +723,14 @@ def main(argv=None) -> int:
     ap.add_argument("--vcf", required=True, nargs="+", help="fastVEP --acmg VCF output(s), no --pick")
     ap.add_argument("--out-variants", required=True)
     ap.add_argument("--out-carriers", required=True)
-    ap.add_argument("--pick-order", default=DEFAULT_PICK_ORDER,
-                    help=f"comma-separated tiers (default {DEFAULT_PICK_ORDER}; VEP-path order: "
-                         f"{VEP_PATH_PICK_ORDER}). Final tie-break is always transcript ID.")
+    ap.add_argument("--selection", choices=SELECTIONS, default="fastvep_pick",
+                    help="fastvep_pick (default): fastVEP's own PICK=1 block (v0.5.0 output, "
+                         "--flag-pick-allele-gene). python_pick: DEPRECATED Python port of the "
+                         "pick order, for comparing against PICK-less v6 output only.")
+    ap.add_argument("--pick-order", default=None,
+                    help=f"python_pick only: comma-separated tiers (default {DEFAULT_PICK_ORDER}; "
+                         f"VEP-path order: {VEP_PATH_PICK_ORDER}). Final tie-break is always "
+                         "transcript ID.")
     fl = ap.add_mutually_exclusive_group()
     fl.add_argument("--drop-flanking-genes", dest="drop_flanking", action="store_true",
                     default=True, help="drop gene rows whose only consequences are "
@@ -639,10 +740,17 @@ def main(argv=None) -> int:
                     "aggregation by run_acmg_carriers_chr.sh)")
     args = ap.parse_args(argv)
 
+    if args.selection == "fastvep_pick" and args.pick_order is not None:
+        ap.error("--pick-order applies to --selection python_pick only; fastvep_pick uses "
+                 "fastVEP's own PICK flag")
     try:
-        order = parse_pick_order(args.pick_order)
+        order = parse_pick_order(args.pick_order or DEFAULT_PICK_ORDER)
     except ValueError as e:
         ap.error(str(e))
+    if args.selection == "python_pick":
+        print("WARN: --selection python_pick is DEPRECATED: it re-implements fastVEP's pick "
+              "order in Python. Use it only to compare against PICK-less (v6) output; fastVEP "
+              "v0.5.0 output should use the default fastvep_pick.", file=_sys.stderr)
 
     stats = new_stats()
     with open(args.out_variants, "w", encoding="utf-8") as ov, \
@@ -650,12 +758,13 @@ def main(argv=None) -> int:
         ov.write(VARIANT_HEADER)
         oc.write(CARRIER_HEADER)
         for path in args.vcf:
-            process_vcf(path, ov, oc, stats, order, args.drop_flanking)
+            process_vcf(path, ov, oc, stats, order, args.drop_flanking, args.selection)
 
-    print(format_summary(stats, order, args.drop_flanking), file=_sys.stderr)
+    print(format_summary(stats, order, args.drop_flanking, args.selection), file=_sys.stderr)
     if args.stats_json:
         with open(args.stats_json, "w", encoding="utf-8") as fh:
-            json.dump({"order": order, "drop_flanking": args.drop_flanking, "stats": stats}, fh)
+            json.dump({"order": order, "drop_flanking": args.drop_flanking,
+                       "selection": args.selection, "stats": stats}, fh)
     return 0
 
 
@@ -664,18 +773,19 @@ def aggregate_stats_main(argv=None) -> int:
     counters and print the same summary for the whole set."""
     paths = argv if argv is not None else _sys.argv[2:]
     total = new_stats()
-    order, drop = [], True
+    order, drop, selection = [], True, "python_pick"
     for p in paths:
         with open(p, encoding="utf-8") as fh:
             d = json.load(fh)
         order, drop = d["order"], d["drop_flanking"]
+        selection = d.get("selection", "python_pick")
         for k, v in d["stats"].items():
             if k == "by_tier":
                 for t, n in v.items():
                     total["by_tier"][t] = total["by_tier"].get(t, 0) + n
             else:
-                total[k] += v
-    print(format_summary(total, order, drop))
+                total[k] = total.get(k, 0) + v
+    print(format_summary(total, order, drop, selection))
     return 0
 
 
