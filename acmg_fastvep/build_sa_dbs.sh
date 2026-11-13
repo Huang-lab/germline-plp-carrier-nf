@@ -32,7 +32,9 @@
 #   * A database is built in $FV_HOME/sa_build_tmp and moved into sa_db only
 #     after sa-build exits 0, then <db>.done is written. A killed job leaves
 #     nothing in sa_db for fastVEP to half-load.
-#   * Skip = output AND .done both present. Either alone is rebuilt.
+#   * Skip = output AND .done present AND the .done records the same upstream
+#     source (sha256), binary and sa-build args. Anything else is rebuilt, with
+#     the reason printed (a new ClinGen export, --use-omim, a new binary ...).
 #   * Only gnomAD v4.1 EXOMES are read. Never put joint or genomes databases
 #     beside these: fastVEP keeps one gnomad answer per allele (the database
 #     sorting last), so mixing silently swaps frequencies.
@@ -109,15 +111,60 @@ WORK="$(mktemp -d "$TMPROOT/${MODE}${CHROM}.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 BUILT=""; SKIPPED=""
-# build <source> <db base> <ext> <input> [extra sa-build args...]
+
+# Identity of an upstream source file: its sha256, cached in <file>.sha256
+# with the size and mtime it was taken at in <file>.sha256.stat (the same cache
+# fetch_sa_sources.sh keeps); a file whose size or mtime moved is re-hashed.
+# The cache also outlives a gnomAD file removed by --delete-gnomad-src, so its
+# databases still count as current.
+stat_of() { printf '%s %s' "$(wc -c < "$1" | tr -d ' ')" "$(date -r "$1" +%s)"; }
+ident() {   # file
+    local f="$1"
+    if [ ! -e "$f" ] && [ -s "$f.sha256" ]; then cat "$f.sha256"; return 0; fi
+    [ -s "$f" ] || die "source missing or empty: $f"
+    if [ -s "$f.sha256" ] && [ "$(cat "$f.sha256.stat" 2>/dev/null)" = "$(stat_of "$f")" ]; then
+        cat "$f.sha256"; return 0
+    fi
+    sha256_of "$f" > "$f.sha256"
+    stat_of "$f" > "$f.sha256.stat"
+    cat "$f.sha256"
+}
+kv() { awk -v k="$1" '$1 == k && !done { sub(/^[^ ]+ +/, ""); print; done = 1 }' "$2"; }
+
+# up_to_date <db file name> <source file> [sa-build args...]
+# The database counts as built only if it and its .done exist AND the .done
+# records this source (by sha256), this binary and these sa-build args. A
+# changed ClinGen export, a new REVEL split or --use-omim therefore rebuilds
+# without --force; the reason is printed.
+up_to_date() {
+    local db="$1" src="$2"; shift 2
+    local done="$DB/$db.done" want_args="--assembly GRCh38 --no-progress $*" why=""
+    [ "$FORCE" = 0 ] || return 1
+    [ -s "$DB/$db" ] && [ -e "$done" ] || return 1
+    [ "$(kv source_file "$done")" = "$src" ] || why="source file was $(kv source_file "$done")"
+    [ -n "$why" ] || [ "$(kv source_sha256 "$done")" = "$(ident "$src")" ] || why="source changed (sha256)"
+    [ -n "$why" ] || [ "$(kv fastvep_sha256 "$done")" = "$FV_BIN_SHA256" ] || why="built by another fastvep"
+    [ -n "$why" ] || [ "$(kv args "$done")" = "$want_args" ] || why="sa-build args differ"
+    if [ -n "$why" ]; then
+        echo "[rebuild] $db: $why" >&2
+        return 1
+    fi
+    return 0
+}
+
+# build <source> <db base> <ext> <input> <upstream source file> [extra sa-build args...]
+# <input> is what sa-build reads (it may be derived, e.g. the ClinGen TSV);
+# <upstream source file> is what sa_src holds and what the .done is keyed on.
 build() {
-    local source="$1" base="$2" ext="$3" in="$4"; shift 4
+    local source="$1" base="$2" ext="$3" in="$4" upstream="$5"; shift 5
     local out="$DB/$base.$ext" done="$DB/$base.$ext.done" log="$LOGDIR/$base.log"
-    if [ "$FORCE" = 0 ] && [ -s "$out" ] && [ -e "$done" ]; then
-        echo "[skip] $base.$ext (present with .done)" >&2
+    if up_to_date "$base.$ext" "$upstream" "$@"; then
+        echo "[skip] $base.$ext (current: same source, binary and args)" >&2
         SKIPPED="$SKIPPED $base"; return 0
     fi
     [ -s "$in" ] || die "$base: input missing or empty: $in"
+    local src_sha
+    src_sha="$(ident "$upstream")"
     rm -f "$out" "$done"
     mkdir -p "$WORK/$base"
     echo "[build] $base.$ext  <-  $in" >&2
@@ -132,13 +179,12 @@ build() {
         die "$base: sa-build exited 0 but wrote no $base.$ext (extension changed upstream?)"
     }
     mv -f "$WORK/$base/$base.$ext" "$out"
-    local in_sha=""
-    [ -s "$in.sha256" ] && in_sha="$(cat "$in.sha256")"
     {
         echo "built_utc     $(date -u +%Y-%m-%dT%H:%M:%SZ)"
         echo "source        $source"
         echo "input         $in"
-        echo "input_sha256  ${in_sha:-not recorded (derived file)}"
+        echo "source_file   $upstream"
+        echo "source_sha256 $src_sha"
         echo "args          --assembly GRCh38 --no-progress $*"
         echo "fastvep       $FV_BIN"
         echo "fastvep_sha256 $FV_BIN_SHA256"
@@ -155,47 +201,61 @@ if [ "$MODE" = single ]; then
     [ -s "$SRC/CLINVAR_DATE" ] || die "no $SRC/CLINVAR_DATE (run fetch_sa_sources.sh)"
     CV="$SRC/clinvar_$(cat "$SRC/CLINVAR_DATE").vcf.gz"
     [ -e "$CV.md5.ok" ] || die "$CV was not md5-verified by fetch_sa_sources.sh"
-    build clinvar clinvar osa2 "$CV"
+    build clinvar clinvar osa2 "$CV" "$CV"
 
-    build clinvar_protein clinvar_protein oga "$SRC/variant_summary.txt.gz"
-    build gnomad_genes gnomad_genes oga "$SRC/gnomad.v4.1.constraint_metrics.tsv"
+    # variant_summary is NCBI's moving file; the copy in sa_src is the pinned one
+    # (its date: sa_src/VARIANT_SUMMARY_DATE), and the .done keys on its sha256.
+    VS="$SRC/variant_summary.txt.gz"
+    build clinvar_protein clinvar_protein oga "$VS" "$VS"
+    GC="$SRC/gnomad.v4.1.constraint_metrics.tsv"
+    build gnomad_genes gnomad_genes oga "$GC" "$GC"
 
-    # omim (json key) = ClinGen Gene-Disease Validity by default, per ACMG_SETUP.md.
+    # omim (json key) = ClinGen Gene-Disease Validity by default, per ACMG_SETUP.md;
+    # --use-omim keys it on genemap2.txt instead, so switching rebuilds by itself.
     if [ "$USE_OMIM" = 1 ]; then
-        build omim omim oga "$SRC/genemap2.txt"
-    elif is_done omim.oga && [ "$FORCE" = 0 ]; then
-        build omim omim oga "$SRC/derived/clingen_gdv.tsv"   # reports the skip
+        build omim omim oga "$SRC/genemap2.txt" "$SRC/genemap2.txt"
     else
         shopt -s nullglob; cg=("$SRC"/clingen_gene_validity_*.csv); shopt -u nullglob
         [ ${#cg[@]} -eq 1 ] || die "expected exactly one clingen_gene_validity_*.csv in $SRC, found ${#cg[@]}"
-        # Two positional arguments: input CSV, output TSV.
-        python3 "$SA_SOURCES/clingen_gdv_to_oga.py" "${cg[0]}" "$WORK/clingen_gdv.tsv" \
-            2> "$LOGDIR/clingen_gdv_to_oga.log" || { cat "$LOGDIR/clingen_gdv_to_oga.log" >&2; die "clingen_gdv_to_oga.py failed"; }
-        cat "$LOGDIR/clingen_gdv_to_oga.log" >&2
-        cp -f "$WORK/clingen_gdv.tsv" "$SRC/derived/clingen_gdv.tsv"   # check_sa_db.sh reads it
-        build omim omim oga "$SRC/derived/clingen_gdv.tsv"
+        if up_to_date omim.oga "${cg[0]}"; then
+            echo "[skip] omim.oga (current: same ClinGen export, binary and args)" >&2
+            SKIPPED="$SKIPPED omim"
+        else
+            # Two positional arguments: input CSV, output TSV.
+            python3 "$SA_SOURCES/clingen_gdv_to_oga.py" "${cg[0]}" "$WORK/clingen_gdv.tsv" \
+                2> "$LOGDIR/clingen_gdv_to_oga.log" || { cat "$LOGDIR/clingen_gdv_to_oga.log" >&2; die "clingen_gdv_to_oga.py failed"; }
+            cat "$LOGDIR/clingen_gdv_to_oga.log" >&2
+            cp -f "$WORK/clingen_gdv.tsv" "$SRC/derived/clingen_gdv.tsv"   # check_sa_db.sh reads it
+            FORCE_SAVE="$FORCE"; FORCE=1
+            build omim omim oga "$SRC/derived/clingen_gdv.tsv" "${cg[0]}"
+            FORCE="$FORCE_SAVE"
+        fi
     fi
 
-    if is_done repeatmasker.osi && [ "$FORCE" = 0 ]; then
-        echo "[skip] repeatmasker.osi (present with .done)" >&2; SKIPPED="$SKIPPED repeatmasker"
+    RM="$SRC/rmsk.txt.gz"
+    if up_to_date repeatmasker.osi "$RM" --name repeatmasker; then
+        echo "[skip] repeatmasker.osi (current)" >&2; SKIPPED="$SKIPPED repeatmasker"
     else
-        [ -s "$SRC/rmsk.txt.gz" ] || die "repeatmasker: missing $SRC/rmsk.txt.gz"
-        python3 "$SA_SOURCES/repeatmasker_to_bed.py" "$SRC/rmsk.txt.gz" > "$WORK/repeatmasker.bed" \
+        [ -s "$RM" ] || die "repeatmasker: missing $RM"
+        python3 "$SA_SOURCES/repeatmasker_to_bed.py" "$RM" > "$WORK/repeatmasker.bed" \
             2> "$LOGDIR/repeatmasker_to_bed.log" || { cat "$LOGDIR/repeatmasker_to_bed.log" >&2; die "repeatmasker_to_bed.py failed"; }
         cat "$LOGDIR/repeatmasker_to_bed.log" >&2
         # --name repeatmasker is load-bearing: the classifier finds BP3's track by a key containing "repeat".
-        build custom_bed repeatmasker osi "$WORK/repeatmasker.bed" --name repeatmasker
+        FORCE_SAVE="$FORCE"; FORCE=1
+        build custom_bed repeatmasker osi "$WORK/repeatmasker.bed" "$RM" --name repeatmasker
+        FORCE="$FORCE_SAVE"
     fi
 else
     c="$CHROM"
     G="$SRC/gnomad.exomes.v4.1.sites.chr${c}.vcf.bgz"
-    build gnomad "gnomad_chr${c}" osa2 "$G" --chunk-bits 16
+    build gnomad "gnomad_chr${c}" osa2 "$G" "$G" --chunk-bits 16
 
     # SpliceAI and PhyloP are distilled from the same gnomAD file (its
     # spliceai_ds_max and phylop INFO fields). --url points the extractor at the
     # local .bgz; with no --regions it reads the whole chromosome via tabix.
-    if [ "$FORCE" = 0 ] && is_done "spliceai_chr${c}.osa2" && is_done "phylop_chr${c}.osa2"; then
-        echo "[skip] spliceai_chr${c}.osa2 phylop_chr${c}.osa2 (present with .done)" >&2
+    if up_to_date "spliceai_chr${c}.osa2" "$G" --chunk-bits 16 && \
+       up_to_date "phylop_chr${c}.osa2" "$G" --chunk-bits 16; then
+        echo "[skip] spliceai_chr${c}.osa2 phylop_chr${c}.osa2 (current)" >&2
         SKIPPED="$SKIPPED spliceai_chr${c} phylop_chr${c}"
     else
         [ -s "$G" ] && [ -s "$G.tbi" ] || die "chr$c: need $G and its .tbi for extract_gnomad_scores.py"
@@ -204,18 +264,22 @@ else
             2> "$LOGDIR/extract_gnomad_scores_chr${c}.log" || {
             cat "$LOGDIR/extract_gnomad_scores_chr${c}.log" >&2; die "extract_gnomad_scores.py chr$c failed"; }
         cat "$LOGDIR/extract_gnomad_scores_chr${c}.log" >&2
-        build spliceai "spliceai_chr${c}" osa2 "$WORK/extract/spliceai_chr${c}.vcf" --chunk-bits 16
-        build phylop "phylop_chr${c}" osa2 "$WORK/extract/phylop_chr${c}.tsv" --chunk-bits 16
+        FORCE_SAVE="$FORCE"; FORCE=1
+        build spliceai "spliceai_chr${c}" osa2 "$WORK/extract/spliceai_chr${c}.vcf" "$G" --chunk-bits 16
+        build phylop "phylop_chr${c}" osa2 "$WORK/extract/phylop_chr${c}.tsv" "$G" --chunk-bits 16
+        FORCE="$FORCE_SAVE"
     fi
 
     if [ "$c" = Y ]; then
         echo "[skip] revel_chrY: REVEL v1.3 has no chrY records, and sa-build refuses an empty database" >&2
     else
-        build revel "revel_chr${c}" osa2 "$SRC/revel/revel_chr${c}.csv"
+        R="$SRC/revel/revel_chr${c}.csv"
+        build revel "revel_chr${c}" osa2 "$R" "$R"
     fi
 
     if [ "$DELETE_GNOMAD" = 1 ]; then
         if is_done "gnomad_chr${c}.osa2" && is_done "spliceai_chr${c}.osa2" && is_done "phylop_chr${c}.osa2"; then
+            [ -s "$G.sha256" ] || ident "$G" > /dev/null    # keep its identity for later skips
             echo "[clean] --delete-gnomad-src: removing $G(.tbi)" >&2
             rm -f "$G" "$G.tbi"
         else

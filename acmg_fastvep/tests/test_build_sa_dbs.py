@@ -168,7 +168,11 @@ def test_chrom_builds_four_with_chunk_bits(fv):
     assert "spliceai_chr21.vcf" in calls["spliceai"] and "phylop_chr21.tsv" in calls["phylop"]
     for f in ("gnomad_chr21", "spliceai_chr21", "phylop_chr21", "revel_chr21"):
         assert (fv["db"] / f"{f}.osa2.done").exists()
-    assert "input_sha256  abc123" in (fv["db"] / "gnomad_chr21.osa2.done").read_text()
+    done = (fv["db"] / "gnomad_chr21.osa2.done").read_text()
+    g = fv["src"] / "gnomad.exomes.v4.1.sites.chr21.vcf.bgz"
+    assert f"source_sha256 {_sha(g)}" in done and f"source_file   {g}" in done
+    # spliceai/phylop are keyed on the gnomAD file they were distilled from
+    assert f"source_sha256 {_sha(g)}" in (fv["db"] / "spliceai_chr21.osa2.done").read_text()
 
 
 def test_chrom_y_has_no_revel(fv):
@@ -298,3 +302,60 @@ def test_check_fails_when_stack_or_omim_fails(fv):
                                     HERE.parent / "setup_fastvep.sh"])
 def test_scripts_are_syntactically_valid(script):
     assert subprocess.run(["bash", "-n", str(script)]).returncode == 0
+
+
+def _bump(path: Path, text: str):
+    """Rewrite a source and move its mtime, as a new download would."""
+    path.write_text(text)
+    st = path.stat()
+    os.utime(path, (st.st_atime, st.st_mtime + 100))
+
+
+def test_changed_source_rebuilds_without_force(fv):
+    assert _run(BUILD, fv, "--single").returncode == 0
+    assert _run(BUILD, fv, "--chrom", "21").returncode == 0
+    n = len(_calls(fv))
+    assert _run(BUILD, fv, "--single").returncode == 0
+    assert len(_calls(fv)) == n, "nothing changed, nothing should rebuild"
+
+    _bump(fv["src"] / "clingen_gene_validity_20261110.csv", "a newer export\n")
+    _bump(fv["src"] / "revel" / "revel_chr21.csv", "h\nanother row\n")
+    r = _run(BUILD, fv, "--single")
+    assert r.returncode == 0 and "[rebuild] omim.oga: source changed" in r.stderr
+    r2 = _run(BUILD, fv, "--chrom", "21")
+    assert r2.returncode == 0 and "[rebuild] revel_chr21.osa2: source changed" in r2.stderr
+    new = [c.split("--source ")[1].split()[0] for c in _calls(fv)[n:]]
+    assert sorted(new) == ["omim", "revel"], new
+
+
+def test_use_omim_takes_effect_without_force(fv):
+    (fv["src"] / "genemap2.txt").write_text("data\n")
+    assert _run(BUILD, fv, "--single").returncode == 0
+    n = len(_calls(fv))
+    r = _run(BUILD, fv, "--single", "--use-omim")
+    assert r.returncode == 0, r.stderr
+    new = _calls(fv)[n:]
+    assert len(new) == 1 and "--source omim" in new[0] and "genemap2.txt" in new[0]
+    assert "[rebuild] omim.oga: source file was" in r.stderr
+    # and back to ClinGen
+    r = _run(BUILD, fv, "--single")
+    assert r.returncode == 0 and "derived/clingen_gdv.tsv" in _calls(fv)[-1]
+
+
+def test_deleted_gnomad_source_still_counts_as_current(fv):
+    assert _run(BUILD, fv, "--chrom", "21", "--delete-gnomad-src").returncode == 0
+    n = len(_calls(fv))
+    r = _run(BUILD, fv, "--chrom", "21")
+    assert r.returncode == 0, r.stderr
+    assert len(_calls(fv)) == n
+
+
+def test_new_binary_rebuilds(fv, tmp_path):
+    assert _run(BUILD, fv, "--single").returncode == 0
+    b2 = tmp_path / "fastvep2"
+    b2.write_text(Path(fv["env"]["FV_BIN"]).read_text() + "# another build\n")
+    b2.chmod(0o755)
+    n = len(_calls(fv))
+    r = _run(BUILD, fv, "--single", extra={"FV_BIN": str(b2), "FV_BIN_SHA256": _sha(b2)})
+    assert r.returncode == 0 and "built by another fastvep" in r.stderr
+    assert len(_calls(fv)) - n == 5

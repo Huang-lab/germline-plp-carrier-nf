@@ -174,14 +174,14 @@ fi
 
 # --- 5. seal ---
 echo "[check] hashing $n_exp databases ..." >&2
-: > "$WORK/sha"; printf 'file\tsize\tsha256\tbuilt_utc\tinput\tinput_sha256\n' > "$WORK/man"
+: > "$WORK/sha"; printf 'file\tsize\tsha256\tbuilt_utc\tsource_file\tsource_sha256\n' > "$WORK/man"
 # shellcheck disable=SC2086  # EXPECTED is a word list by design
 for f in $(printf '%s\n' $EXPECTED | LC_ALL=C sort); do
     h="$(sha256_of "$DB/$f")"
     printf '%s  %s\n' "$h" "$f" >> "$WORK/sha"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$f" "$(size_of "$DB/$f")" "$h" \
-        "$(sed -n 's/^built_utc  *//p' "$DB/$f.done")" "$(sed -n 's/^input  *//p' "$DB/$f.done")" \
-        "$(sed -n 's/^input_sha256  *//p' "$DB/$f.done")" >> "$WORK/man"
+        "$(sed -n 's/^built_utc  *//p' "$DB/$f.done")" "$(sed -n 's/^source_file  *//p' "$DB/$f.done")" \
+        "$(sed -n 's/^source_sha256  *//p' "$DB/$f.done")" >> "$WORK/man"
 done
 mv -f "$WORK/man" "$MAN.partial"; mv -f "$WORK/sha" "$SHA.partial"
 mv -f "$MAN.partial" "$MAN"; mv -f "$SHA.partial" "$SHA"

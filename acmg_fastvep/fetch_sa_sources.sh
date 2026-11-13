@@ -86,6 +86,7 @@ sha256_of() {
     if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
     else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
+stat_of() { printf '%s %s' "$(wc -c < "$1" | tr -d ' ')" "$(date -r "$1" +%s)"; }
 md5_of() {
     if command -v md5sum >/dev/null 2>&1; then md5sum "$1" | cut -d' ' -f1
     else md5 -q "$1"; fi
@@ -301,9 +302,12 @@ OUT="$SRC/SOURCES.tsv"
                 "$note; deleted after build"
             continue
         fi
-        if [ ! -s "$f.sha256" ] || [ "$f.sha256" -ot "$f" ]; then
+        # Cached with the size+mtime it was taken at (curl -R gives a re-download
+        # the server's older mtime, so "cache newer than file" proves nothing).
+        if [ ! -s "$f.sha256" ] || [ "$(cat "$f.sha256.stat" 2>/dev/null)" != "$(stat_of "$f")" ]; then
             echo "[fetch] sha256 $f" >&2
             sha256_of "$f" > "$f.sha256"
+            stat_of "$f" > "$f.sha256.stat"
         fi
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${f#"$SRC"/}" "$url" "$(date -r "$f" +%Y-%m-%d)" \
             "$(wc -c < "$f" | tr -d ' ')" "$(cat "$f.sha256")" "$note"
