@@ -109,6 +109,20 @@ fi
 MODE_NAME="$([ "$DO_ACMG" = 1 ] && echo acmg || echo annotate)"
 mkdir -p "$OUTDIR"
 
+# One batch driver per outdir at a time (the manifest and run provenance are
+# shared files); each chunk is additionally locked by run_fastvep.sh itself.
+# shellcheck source=fv_lock.sh
+. "$HERE/fv_lock.sh"
+fv_lock_acquire "$OUTDIR/.batch.lock" 8 "batch output dir $OUTDIR" || exit 7
+trap 'fv_lock_release' EXIT
+trap 'exit 143' TERM INT
+
+# The transcript cache is hashed once here and handed to every chunk with the
+# path|size|mtime it was taken at (run_fastvep.sh re-hashes if that differs).
+FV_CACHE_SHA256="$(sha256_of "$TRANSCRIPT_CACHE")"
+FV_CACHE_STAT="$(printf '%s|%s|%s' "$TRANSCRIPT_CACHE" "$(wc -c < "$TRANSCRIPT_CACHE" | tr -d ' ')" "$(date -r "$TRANSCRIPT_CACHE" +%s)")"
+export FV_CACHE_SHA256 FV_CACHE_STAT
+
 # common run_fastvep.sh args shared by every chunk
 common=(--fastvep "$FASTVEP" --gff3 "$GFF3" --fasta "$FASTA" --transcript-cache "$TRANSCRIPT_CACHE")
 [ "$DO_HGVS" = 1 ]         && common+=(--hgvs)
@@ -131,7 +145,7 @@ pipeline_dirty="$( [ -n "$(git -C "$HERE" status --porcelain 2>/dev/null)" ] && 
     echo "fastvep_version        $("$FASTVEP" --version 2>/dev/null || echo unknown)"
     echo "gff3                   $(basename "$GFF3")  ($GFF3)"
     echo "transcript_cache       $(basename "$TRANSCRIPT_CACHE")  ($TRANSCRIPT_CACHE)"
-    echo "transcript_cache_sha256 $(sha256_of "$TRANSCRIPT_CACHE")"
+    echo "transcript_cache_sha256 $FV_CACHE_SHA256"
     echo "fasta                  $(basename "$FASTA")  ($FASTA)"
     echo "sa_dir                 ${SA_DIR:-none}"
     echo "sa_db_sha256           $SA_SHA   (sha256 of SA_DB_SHA256.txt)"
@@ -152,11 +166,16 @@ shopt -u nullglob
 echo "[batch] ${#inputs[@]} input VCF(s) from $INDIR" >&2
 
 chunk_name() { local n; n="$(basename "$1")"; n="${n%.gz}"; n="${n%.vcf}"; echo "${n%.norm}"; }
-prov_field() { sed -n "s/^$2  *//p" "$1" | head -1; }
+# Value of a "field<spaces>value" line; awk reads to the end (no SIGPIPE).
+kv() { awk -v k="$1" '$1 == k && !done { sub(/^[^ ]+ +/, ""); print; done = 1 }'; }
+# The fields run_fastvep.sh --expect-provenance prints; all must match to skip.
+KEY_FIELDS="mode fastvep_sha256 sa_db_sha256 input_sha256 transcript_cache_sha256 fasta acmg_config_sha256 fastvep_flags"
 
 # Decide every chunk before running any. A chunk whose expected output(s)
 # already exist is skipped only when its .fastvep.provenance says it was made
-# by this binary, against this sa_db, in this mode; output from anything else
+# from this input (sha256 of the chunk VCF), by this binary, against this
+# sa_db and transcript cache (sha256), FASTA (path), acmg-config (sha256 or
+# none), in this mode, with these fastVEP flags; output from anything else
 # is refused (or redone with --force), so a re-run can never quietly mix
 # annotations from two fastVEP versions or two sa_db builds in one batch.
 #
@@ -170,9 +189,8 @@ for vcf in "${inputs[@]}"; do
     vep_out="$OUTDIR/${name}.fastvep.vcf.gz"
     acmg_out="$OUTDIR/${name}.acmg_plp.tsv"
     prov="$OUTDIR/${name}.fastvep.provenance"
-    for stale in "$OUTDIR/.${name}.fastvep.vcf.gz.partial" \
-                 "$OUTDIR/.${name}.acmg_plp.tsv.partial"; do
-        [ -e "$stale" ] && echo "[batch] note: clearing stale partial from an interrupted run: $stale" >&2
+    for stale in "$OUTDIR/.${name}".*.partial*; do
+        [ -e "$stale" ] && echo "[batch] note: stale partial from an interrupted run (cleared when the chunk reruns): $stale" >&2
     done
     have_out=0
     if [ -s "$vep_out" ]; then
@@ -182,12 +200,14 @@ for vcf in "${inputs[@]}"; do
     why=""
     if [ ! -s "$prov" ]; then
         why="no provenance file"
-    elif [ "$(prov_field "$prov" fastvep_sha256)" != "$BIN_SHA" ]; then
-        why="made by fastvep sha256 $(prov_field "$prov" fastvep_sha256)"
-    elif [ "$(prov_field "$prov" sa_db_sha256)" != "$SA_SHA" ]; then
-        why="made against sa_db $(prov_field "$prov" sa_db_sha256)"
-    elif [ "$(prov_field "$prov" mode)" != "$MODE_NAME" ]; then
-        why="made in mode $(prov_field "$prov" mode)"
+    else
+        expect="$("$HERE/run_fastvep.sh" --expect-provenance -i "$vcf" -o "$OUTDIR" "${common[@]}")"
+        for k in $KEY_FIELDS; do
+            have="$(kv "$k" < "$prov")"; want="$(printf '%s\n' "$expect" | kv "$k")"
+            if [ "$have" != "$want" ]; then
+                why="$why${why:+; }$k differs (output: ${have:-<none>}; now: $want)"
+            fi
+        done
     fi
     if [ -z "$why" ]; then
         skip+=("$name")

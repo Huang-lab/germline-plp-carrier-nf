@@ -9,7 +9,9 @@ from __future__ import annotations
 import gzip
 import hashlib
 import os
+import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -27,16 +29,24 @@ GATED = [
     "warning: --acmg: the gnomAD databases that are loaded hold nothing of chromosomes 22, "
     "which the gene model has transcripts on.",
     "warning: 3 allele lookup(s) were answered by more than one database under the key `gnomad`",
+    "warning: gnomad could not be read for 12 variant lookup(s); those variants carry no gnomad "
+    "annotation, which is not the same as having none. First error: short read",
+    "warning: 4 record(s) of the VCF could not be read and were not annotated (the first are named above)",
+    "warning: the VCF has records on `chrUn_x`, which is not a contig of the gene models or the "
+    "reference; they are annotated as intergenic",
+    "warning: 7 record(s) are on contigs that the gene models and the reference do not have, and "
+    "were called intergenic: chrUn_x",
 ]
 
 
-def _fake(tmp_path: Path, *, stderr_line: str = "", tag: str = "a") -> Path:
+def _fake(tmp_path: Path, *, stderr_line: str = "", tag: str = "a", sleep: float = 0) -> Path:
     p = tmp_path / f"fake_fastvep_{tag}"
     p.write_text(
         "#!/usr/bin/env bash\n"
         f"# {tag}\n"
         '[ "$1" = --version ] && { echo "fastvep 0.5.0"; exit 0; }\n'
         'echo "$*" >> "$ARGV_LOG"\n'
+        + (f"sleep {sleep}\n" if sleep else "") +
         'printf "##fileformat=VCFv4.2\\n"\n'
         'printf "##INFO=<ID=CSQ,Number=.,Type=String,Description=\\"fastVEP. '
         'Format: Allele|SYMBOL|ACMG|ACMG_CRITERIA|PICK|ACMG_DISORDERS\\">\\n"\n'
@@ -114,7 +124,7 @@ def test_gated_stderr_fails_the_chunk(tmp_path, line):
     assert not (out / "chunk1.acmg_plp.tsv").exists()
     assert not (out / "chunk1.fastvep.provenance").exists()
     assert line in (out / "chunk1.fastvep.stderr.log").read_text()
-    assert not list(out.glob(".*partial"))
+    assert not list(out.glob(".*partial*"))
 
 
 def test_unpinned_binary_and_missing_env_refused(tmp_path):
@@ -152,7 +162,7 @@ def test_batch_skips_only_matching_provenance(tmp_path):
              "FV_BIN_SHA256": hashlib.sha256(other.read_bytes()).hexdigest()}
     r = _run(args, env_b)
     assert r.returncode == 6, r.stderr
-    assert "chunk1: made by fastvep sha256" in r.stderr
+    assert "chunk1: fastvep_sha256 differs" in r.stderr
 
     r = _run([*args, "--force"], env_b)
     assert r.returncode == 0, r.stderr
@@ -182,3 +192,82 @@ def test_lsf_requires_env(tmp_path):
 @pytest.mark.parametrize("script", [RUNNER, BATCH, LSF])
 def test_scripts_are_syntactically_valid(script):
     assert subprocess.run(["bash", "-n", str(script)]).returncode == 0
+
+
+def test_batch_refuses_output_from_other_inputs_or_settings(tmp_path):
+    """Skip only when input, cache, FASTA, acmg-config and flags all match too."""
+    fake = _fake(tmp_path)
+    vcf, env = _setup(tmp_path, fake)
+    out = tmp_path / "out"
+    args = [BATCH, "--in-dir", tmp_path / "norm_qc", "-o", out]
+    assert _run(args, env).returncode == 0
+    prov = (out / "chunk1.fastvep.provenance").read_text()
+    for k in ("input_sha256", "transcript_cache_sha256", "fasta", "acmg_config_sha256", "fastvep_flags"):
+        assert k in prov, k
+    assert "acmg_config_sha256 none" in prov
+    r = _run([*args, "--hgvs"], env)                       # different flags
+    assert r.returncode == 6 and "fastvep_flags differs" in r.stderr
+    (tmp_path / "g.cache").write_text("another cache\n")   # different transcript cache
+    r = _run(args, env)
+    assert r.returncode == 6 and "transcript_cache_sha256 differs" in r.stderr
+    (tmp_path / "g.cache").write_text("c\n")
+    assert _run(args, env).returncode == 0
+    with gzip.open(vcf, "wt") as fh:                       # the chunk changed, same name
+        fh.write("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+                 "17\t200\t.\tC\tT\t.\tPASS\t.\n")
+    r = _run(args, env)
+    assert r.returncode == 6 and "input_sha256 differs" in r.stderr
+
+
+def test_acmg_config_is_part_of_the_key(tmp_path):
+    fake = _fake(tmp_path)
+    vcf, env = _setup(tmp_path, fake)
+    cfg = tmp_path / "acmg.toml"
+    cfg.write_text("[pm2]\nx = 1\n")
+    a = _run([RUNNER, "--expect-provenance", "-i", vcf, "-o", tmp_path / "o", "--acmg"], env)
+    b = _run([RUNNER, "--expect-provenance", "-i", vcf, "-o", tmp_path / "o", "--acmg",
+              "--acmg-config", cfg], env)
+    assert a.returncode == 0 and b.returncode == 0, a.stderr + b.stderr
+    assert "acmg_config_sha256 none" in a.stdout
+    assert hashlib.sha256(cfg.read_bytes()).hexdigest() in b.stdout
+    assert not (tmp_path / "argv.log").exists(), "--expect-provenance must not run fastvep"
+
+
+def test_second_writer_on_a_chunk_is_refused(tmp_path):
+    """Job B on the same chunk while job A runs: B is refused, and A publishes its
+    own complete output (B used to unlink A's partial, and A then published B's)."""
+    slow = _fake(tmp_path, tag="slow", sleep=2)
+    vcf, env = _setup(tmp_path, slow)
+    out = tmp_path / "out"
+    a = subprocess.Popen(["bash", str(RUNNER), "-i", str(vcf), "-o", str(out)], env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for _ in range(200):
+        if list(out.glob(".chunk1.fastvep.vcf.gz.partial.*")):
+            break
+        time.sleep(0.05)
+    b = _run([RUNNER, "-i", vcf, "-o", out], env)
+    assert b.returncode == 7, b.stderr
+    assert "being written by another running job" in b.stderr or "is locked" in b.stderr
+    _, err = a.communicate(timeout=60)
+    assert a.returncode == 0, err
+    with gzip.open(out / "chunk1.fastvep.vcf.gz", "rt") as fh:
+        assert "CSQ=G|BRCA1" in fh.read()
+    assert not list(out.glob(".*partial*")) and not list(out.glob(".*.lock.d"))
+
+
+def test_stale_mkdir_lock_names_its_holder(tmp_path):
+    """Without flock (macOS here; Minerva has flock) a lock left by a killed job
+    stops the next writer and says whose it was and how to clear it."""
+    if shutil.which("flock"):
+        pytest.skip("flock present: the mkdir fallback is not used")
+    fake = _fake(tmp_path)
+    vcf, env = _setup(tmp_path, fake)
+    out = tmp_path / "out"
+    lock = out / ".chunk1.lock.d"
+    lock.mkdir(parents=True)
+    (lock / "owner").write_text("pid=1 host=x LSB_JOBID=42\n")
+    r = _run([RUNNER, "-i", vcf, "-o", out], env)
+    assert r.returncode == 7 and "LSB_JOBID=42" in r.stderr and "rm -r" in r.stderr
+    (out / ".batch.lock.d").mkdir()
+    r = _run([BATCH, "--in-dir", tmp_path / "norm_qc", "-o", out], env)
+    assert r.returncode == 7 and "batch output dir" in r.stderr

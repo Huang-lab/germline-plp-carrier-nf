@@ -112,7 +112,7 @@ def test_killed_run_publishes_nothing(tmp_path):
         "this chunk forever."
     )
     # And no partial left lying around to confuse the next run.
-    assert not list(outdir.glob(".*partial")), "stale .partial left behind"
+    assert not list(outdir.glob(".*partial*")), "stale .partial left behind"
 
 
 def test_truncated_output_is_a_valid_gzip_stream(tmp_path):
@@ -288,4 +288,4 @@ def test_acmg_run_parses_the_gzipped_partial_and_publishes_both(tmp_path):
     rows = (outdir / "chunk1.acmg_plp.tsv").read_text().splitlines()
     assert rows[0] == ACMG_HEADER
     assert rows[1].split("\t")[:6] == ["17", "100", "A", "G", "BRCA1", "Likely_pathogenic"]
-    assert not list(outdir.glob(".*partial"))
+    assert not list(outdir.glob(".*partial*"))

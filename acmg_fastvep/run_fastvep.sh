@@ -28,7 +28,17 @@
 #   'was not loaded'                       a database file is empty/unopenable
 #   'hold nothing of chromosomes'          gnomAD lacks a chromosome of the gene model
 #   'answered by more than one database'   two databases answer for one source key
-# fastVEP's stderr is kept as <name>.fastvep.stderr.log either way.
+#   'could not be read for'                an SA lookup hit an I/O error: those variants
+#                                          carry no annotation (PM2 then fires falsely)
+#   'could not be read and were not annotated'  VCF records dropped from the output
+#   'not a contig of the gene models' / 'are on contigs that the gene models and the
+#   reference do not have'                 records silently called intergenic
+# (strings from fastvep-annotate/src/lib.rs and fastvep-cli/src/pipeline/annotate.rs
+# at v0.5.0). fastVEP's stderr is kept as <name>.fastvep.stderr.log either way.
+#
+# One writer per chunk: a lock on <outdir>/.<name>.lock (fv_lock.sh), and
+# partial files named per job, so a second job on the same chunk is refused
+# instead of publishing the first job's half-written file.
 set -euo pipefail
 
 usage() {
@@ -51,6 +61,8 @@ Options (each overrides its env variable):
   --hgvs                  emit HGVSc/HGVSp (--acmg turns it on anyway)
   --pick                  plain mode only: one consequence per variant
   --threads <N>           worker threads (exported as RAYON_NUM_THREADS)
+  --expect-provenance     print the provenance key fields this run WOULD record and
+                          exit without running (run_fastvep_batch.sh's skip check)
   -h, --help
 
 Outputs:
@@ -69,7 +81,7 @@ fi
 FASTVEP="${FV_BIN:-}"; GFF3="${FV_GFF3:-}"; FASTA="${FV_FASTA:-}"
 TRANSCRIPT_CACHE="${FV_CACHE:-}"; SA_DIR="${FV_SA:-}"
 IN=""; OUTDIR=""; ACMG_CONFIG=""; THREADS=""
-DO_ACMG=0; DO_HGVS=0; DO_PICK=0
+DO_ACMG=0; DO_HGVS=0; DO_PICK=0; EXPECT_ONLY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         -i|--input)          IN="$2"; shift 2 ;;
@@ -84,6 +96,7 @@ while [ $# -gt 0 ]; do
         --acmg)              DO_ACMG=1; shift ;;
         --hgvs)              DO_HGVS=1; shift ;;
         --pick)              DO_PICK=1; shift ;;
+        --expect-provenance) EXPECT_ONLY=1; shift ;;
         -h|--help)           usage ;;
         *) echo "Unknown arg: $1" >&2; usage ;;
     esac
@@ -93,6 +106,7 @@ sha256_of() {
     if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
     else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
+file_stat() { printf '%s|%s|%s' "$1" "$(wc -c < "$1" | tr -d ' ')" "$(date -r "$1" +%s)"; }
 
 # --- validation ---
 [ -n "$IN" ] && [ -n "$OUTDIR" ] || usage
@@ -120,9 +134,48 @@ if [ "$DO_ACMG" = 1 ]; then
 fi
 [ -n "$THREADS" ] && export RAYON_NUM_THREADS="$THREADS"
 
-mkdir -p "$OUTDIR"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 name="$(basename "$IN")"; name="${name%.gz}"; name="${name%.vcf}"; name="${name%.norm}"
+
+# --- the fastVEP flags (everything but input/output), and the provenance key ---
+# The transcript cache is the transcript source; fastVEP ignores --gff3 when a
+# cache loads (and warns), so --gff3 is not passed. FV_GFF3 is recorded only.
+flags=(--output-format vcf --transcript-cache "$TRANSCRIPT_CACHE" --fasta "$FASTA" --no-progress)
+[ "$DO_HGVS" = 1 ]           && flags+=(--hgvs)
+[ "$DO_PICK" = 1 ]           && flags+=(--pick)
+if [ "$DO_ACMG" = 1 ]; then
+    flags+=(--sa-dir "$SA_DIR" --acmg --flag-pick-allele-gene)
+    [ -n "$ACMG_CONFIG" ] && flags+=(--acmg-config "$ACMG_CONFIG")
+fi
+ACMG_CONFIG_SHA="none"
+if [ -n "$ACMG_CONFIG" ]; then
+    [ -s "$ACMG_CONFIG" ] || { echo "ERROR: missing/empty --acmg-config: $ACMG_CONFIG" >&2; exit 3; }
+    ACMG_CONFIG_SHA="$(sha256_of "$ACMG_CONFIG")"
+fi
+# The cache is several GB: run_fastvep_batch.sh hashes it once and passes the
+# digest with the path|size|mtime it was taken at; anything else is re-hashed.
+if [ -n "${FV_CACHE_SHA256:-}" ] && [ "${FV_CACHE_STAT:-}" = "$(file_stat "$TRANSCRIPT_CACHE")" ]; then
+    CACHE_SHA="$FV_CACHE_SHA256"
+else
+    CACHE_SHA="$(sha256_of "$TRANSCRIPT_CACHE")"
+fi
+# Every field here must match for run_fastvep_batch.sh to skip a finished chunk.
+provenance_key() {
+    echo "mode             $([ "$DO_ACMG" = 1 ] && echo acmg || echo annotate)"
+    echo "fastvep_sha256   $BIN_SHA"
+    echo "sa_db_sha256     $SA_SHA"
+    echo "input_sha256     $(sha256_of "$IN")"
+    echo "transcript_cache_sha256 $CACHE_SHA"
+    echo "fasta            $FASTA"
+    echo "acmg_config_sha256 $ACMG_CONFIG_SHA"
+    echo "fastvep_flags    ${flags[*]}"
+}
+if [ "$EXPECT_ONLY" = 1 ]; then
+    provenance_key
+    exit 0
+fi
+
+mkdir -p "$OUTDIR"
 # Write the annotated VCF gzip-compressed. fastVEP streams to stdout (--output -)
 # and we gzip on the fly, so the large uncompressed VCF NEVER lands on disk —
 # keeps peak disk low and makes writing into space-tight result dirs safe.
@@ -144,32 +197,35 @@ ERRLOG="$OUTDIR/${name}.fastvep.stderr.log"
 #
 # Streaming to a temp file and renaming on completion makes the final path mean
 # what the batch driver assumes it means: present iff complete. Same lesson as
-# Huang-lab/fastVEP#88, one layer up.
-VEPTMP="$OUTDIR/.${name}.fastvep.vcf.gz.partial"
-ACMGTMP="$OUTDIR/.${name}.acmg_plp.tsv.partial"
-PROVTMP="$OUTDIR/.${name}.fastvep.provenance.partial"
-# Clear stale partials from an earlier killed run, and clean up after this one.
+# Huang-lab/fastVEP#88, one layer up. The temp names carry the job id and pid,
+# and the chunk lock below makes this job the only writer.
+# shellcheck source=fv_lock.sh
+. "$HERE/fv_lock.sh"
+fv_lock_acquire "$OUTDIR/.${name}.lock" 9 "chunk $name in $OUTDIR" || exit 7
+TAG="${LSB_JOBID:-local}.$$"
+VEPTMP="$OUTDIR/.${name}.fastvep.vcf.gz.partial.$TAG"
+ACMGTMP="$OUTDIR/.${name}.acmg_plp.tsv.partial.$TAG"
+PROVTMP="$OUTDIR/.${name}.fastvep.provenance.partial.$TAG"
+ERRTMP="$OUTDIR/.${name}.fastvep.stderr.log.partial.$TAG"
+trap 'rm -f "$VEPTMP" "$ACMGTMP" "$PROVTMP" "$ERRTMP"; fv_lock_release' EXIT
+trap 'exit 143' TERM INT
+# Holding the lock, any other partial of this chunk is from a dead job: clear it.
 # The provenance goes first on a re-run: outputs without it are never skipped.
-rm -f "$VEPTMP" "$ACMGTMP" "$PROVTMP" "$PROVOUT"
-trap 'rm -f "$VEPTMP" "$ACMGTMP" "$PROVTMP"' EXIT
+rm -f "$OUTDIR/.${name}".*.partial* "$PROVOUT"
 
-# --- build the annotate command ---
-# The transcript cache is the transcript source; fastVEP ignores --gff3 when a
-# cache loads (and warns), so --gff3 is not passed. FV_GFF3 is recorded only.
-cmd=("$FASTVEP" annotate --input "$IN" --output - --output-format vcf
-     --transcript-cache "$TRANSCRIPT_CACHE" --fasta "$FASTA" --no-progress)
-[ "$DO_HGVS" = 1 ]           && cmd+=(--hgvs)
-[ "$DO_PICK" = 1 ]           && cmd+=(--pick)
-if [ "$DO_ACMG" = 1 ]; then
-    cmd+=(--sa-dir "$SA_DIR" --acmg --flag-pick-allele-gene)
-    [ -n "$ACMG_CONFIG" ] && cmd+=(--acmg-config "$ACMG_CONFIG")
-fi
-
+cmd=("$FASTVEP" annotate --input "$IN" --output - "${flags[@]}")
 echo "[fastvep] ${cmd[*]} 2> $ERRLOG | gzip > $VEPOUT" >&2
-"${cmd[@]}" 2> "$ERRLOG" | gzip -c > "$VEPTMP"
+if ! "${cmd[@]}" 2> "$ERRTMP" | gzip -c > "$VEPTMP"; then
+    mv -f "$ERRTMP" "$ERRLOG"
+    echo "ERROR: fastvep failed for $name (stderr: $ERRLOG)" >&2
+    exit 1
+fi
+mv -f "$ERRTMP" "$ERRLOG"
 
 # --- refuse a run whose reference stack was not the one we think ---
 GATED='incomplete reference stack|was not loaded|hold nothing of chromosomes|answered by more than one database'
+GATED="$GATED|could not be read for|could not be read and were not annotated"
+GATED="$GATED|not a contig of the gene models|are on contigs that the gene models and the reference do not have"
 if grep -E "$GATED" "$ERRLOG" >&2; then
     echo "ERROR: fastVEP reported a reference-stack problem (lines above, full log $ERRLOG);" \
          "not publishing $name" >&2
@@ -187,15 +243,12 @@ if [ "$DO_ACMG" = 1 ]; then
 fi
 
 {
+    provenance_key
     echo "chunk            $name"
     echo "input            $IN"
-    echo "mode             $([ "$DO_ACMG" = 1 ] && echo acmg || echo annotate)"
-    echo "fastvep_sha256   $BIN_SHA"
     echo "fastvep_version  $("$FASTVEP" --version 2>/dev/null || echo unknown)"
-    echo "sa_db_sha256     $SA_SHA"
     echo "sa_dir           ${SA_DIR:-none}"
     echo "transcript_cache $TRANSCRIPT_CACHE"
-    echo "fasta            $FASTA"
     echo "command          ${cmd[*]}"
     echo "date_utc         $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "lsb_jobid        ${LSB_JOBID:-}"
