@@ -31,6 +31,9 @@ import os
 import sys
 from collections import defaultdict
 
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import carrier_markers  # noqa: E402
+
 csv.field_size_limit(sys.maxsize)
 
 PLP_LABELS = {"Pathogenic", "Likely_pathogenic"}
@@ -108,6 +111,9 @@ def main(argv=None) -> int:
     ap.add_argument("--pick-prefix", default="results-carriers-pick-",
                     help="dir prefix on the pick side (results-carriers-fastvep_pick- for "
                          "fastvep_pick output)")
+    ap.add_argument("--allow-pick-anomalies", "--allow-failed", dest="allow_failed",
+                    action="store_true",
+                    help="compare result dirs holding a FAILED marker anyway (default: refuse)")
     ap.add_argument("--strip-dir-suffix", action="store_true",
                     help="match chrN_<suffix> dirs on chrN alone (e.g. _v6 against _fv050)")
     args = ap.parse_args(argv)
@@ -135,6 +141,9 @@ def main(argv=None) -> int:
     mane, pick = Side(), Side()
     tiers = defaultdict(lambda: [0, 0])
     discordant: list[dict] = []
+    for chrom in common:
+        for d in (mane_dirs[chrom], pick_dirs[chrom]):
+            carrier_markers.check_dir(d, args.allow_failed, "compare_acmg_pick_vs_mane")
     for chrom in common:
         load(mane_dirs[chrom], chrom, mane)
         load(pick_dirs[chrom], chrom, pick, tiers, discordant)

@@ -156,9 +156,14 @@ What to verify before anything else runs:
    (an SA lookup I/O error: no annotation, PM2 can fire), `could not be read and
    were not annotated` (records dropped), `not a contig of the gene models` or
    `are on contigs that the gene models and the reference do not have` (records
-   called intergenic) fails and publishes nothing. So: every line of
+   called intergenic), `holds databases built for different assemblies` (sa_db
+   mixes assemblies) or `have a REF allele that is not the reference` (REF differs
+   from the FASTA in >= 1 record; fastVEP prints it only for a non-zero count and
+   does not count N/ambiguity REFs, and the QC'd VCFs are normalised against the
+   same GRCh38, so any count means another assembly) fails and publishes nothing.
+   So: every line of
    `$FV_OUT/batch_manifest.tsv` is `ok`, and
-   `grep -lE 'reference stack|was not loaded|hold nothing|more than one database|could not be read|not a contig|are on contigs' $FV_OUT/*.fastvep.stderr.log`
+   `grep -lE 'reference stack|was not loaded|hold nothing|more than one database|could not be read|not a contig|are on contigs|different assemblies|REF allele that is not' $FV_OUT/*.fastvep.stderr.log`
    prints nothing.
 2. **CSQ fields.** `zcat $FV_OUT/<chunk>.fastvep.vcf.gz | grep -m1 '^##INFO=<ID=CSQ' | sed 's/.*Format: //; s/">$//' | tr '|' '\n' | grep -xcE 'MANE_SELECT|ACMG|ACMG_CRITERIA|ACMG_DISORDERS|PICK'`
    prints `5` (ACMG_DISORDERS is the last field, PICK follows FLAGS).
@@ -169,6 +174,17 @@ What to verify before anything else runs:
    and the carriers job **fails (exit 5) after writing its tables**: per fastVEP's
    pick.rs it cannot happen, so a non-zero count means parser and output disagree.
    `--allow-pick-anomalies` accepts it once understood.
+
+   **Outcome markers.** Every carriers output dir ends with exactly one of
+   `DONE` (success; records mode and the PICK counts) or `FAILED` (reason, counts,
+   exit code, UTC time), written on any non-zero exit including the PICK-anomaly
+   exit 5 and the missing-chunk exit 4, even though the tables are there and look
+   complete. A rerun clears both first. `extract_gene_carriers.py` and
+   `compare_acmg_pick_vs_mane.py` refuse a dir holding `FAILED` (exit 4) unless
+   given `--allow-pick-anomalies` (alias `--allow-failed`), and warn about a dir
+   with no `DONE` (made before markers existed, or killed with SIGKILL). Anything
+   else reading `acmg_carriers.tsv` (e.g. the MSM repo's carrier inputs) should
+   make the same check.
 4. **Provenance.** `$FV_OUT/fastvep_run_provenance.txt` names the binary sha256 and
    version (0.5.0), cache sha256, FASTA, `sa_db_sha256`, the pipeline git rev and
    LSB_JOBID; each chunk has `<chunk>.fastvep.provenance` with the same hashes.

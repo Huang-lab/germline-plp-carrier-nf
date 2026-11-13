@@ -61,6 +61,7 @@ _sys.path.insert(0, _HERE)
 _sys.path.insert(0, _os.path.dirname(_HERE))
 
 from plp_rules.csq import parse_csq_format, decode_csq_field  # noqa: E402
+import carrier_markers  # noqa: E402
 from parse_fastvep_acmg import _LABEL, _PLP, _count_criteria  # noqa: E402
 from build_acmg_carriers import (  # noqa: E402
     CARRIER_HEADER,
@@ -741,6 +742,9 @@ def main(argv=None) -> int:
     fl.add_argument("--keep-flanking-genes", dest="drop_flanking", action="store_false")
     ap.add_argument("--stats-json", help="also write the summary counters here (for per-chromosome "
                     "aggregation by run_acmg_carriers_chr.sh)")
+    ap.add_argument("--no-markers", action="store_true",
+                    help="do not write DONE/FAILED next to --out-variants (run_acmg_carriers_chr.sh "
+                         "writes them for the whole chromosome instead)")
     ap.add_argument("--allow-pick-anomalies", action="store_true",
                     help="fastvep_pick: exit 0 even when an (allele, gene) had no or several "
                          "PICK=1 blocks (default: exit 3 after writing the outputs)")
@@ -771,7 +775,18 @@ def main(argv=None) -> int:
         with open(args.stats_json, "w", encoding="utf-8") as fh:
             json.dump({"order": order, "drop_flanking": args.drop_flanking,
                        "selection": args.selection, "stats": stats}, fh)
-    return _anomaly_exit(stats, args.selection, args.allow_pick_anomalies)
+    rc = _anomaly_exit(stats, args.selection, args.allow_pick_anomalies)
+    if not args.no_markers:
+        d = _os.path.dirname(_os.path.abspath(args.out_variants))
+        counts = (f"no PICK=1: {stats.get('no_pick_rows', 0)}; "
+                  f"more than one: {stats.get('multi_pick_rows', 0)}")
+        if rc:
+            carrier_markers.write_failed(d, "PICK anomalies: (allele, gene) rows without exactly "
+                                            "one PICK=1", rc, counts)
+        else:
+            carrier_markers.write_done(d, f"selection={args.selection} "
+                                          f"allow_pick_anomalies={int(args.allow_pick_anomalies)} {counts}")
+    return rc
 
 
 def _anomaly_exit(stats: dict, selection: str, allow: bool) -> int:

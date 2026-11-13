@@ -30,6 +30,9 @@ import os
 import sys
 from collections import defaultdict
 
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import carrier_markers  # noqa: E402
+
 csv.field_size_limit(sys.maxsize)
 
 CARRIER_KEY = ("chr", "pos", "ref", "alt", "gene")
@@ -57,6 +60,9 @@ def main(argv=None) -> int:
     ap.add_argument("--prefix", default="results-carriers-pick-",
                     help="per-chromosome dir prefix (results-carriers-fastvep_pick- for "
                          "fastvep_pick output)")
+    ap.add_argument("--allow-pick-anomalies", "--allow-failed", dest="allow_failed",
+                    action="store_true",
+                    help="read chromosome dirs holding a FAILED marker anyway (default: refuse)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--out-summary", required=True)
     args = ap.parse_args(argv)
@@ -71,6 +77,8 @@ def main(argv=None) -> int:
     if not dirs:
         print(f"ERROR: no {args.prefix}*/ under {args.pick_root}", file=sys.stderr)
         return 3
+    for d in dirs:
+        carrier_markers.check_dir(d, args.allow_failed, "extract_gene_carriers")
     chroms = [os.path.basename(d)[len(args.prefix):] for d in dirs]
     print(f"[extract] {len(genes)} gene(s); {len(dirs)} chromosome(s): {chroms}", file=sys.stderr)
 

@@ -64,7 +64,7 @@ case "$MODE" in
     pick) SCRIPT="build_acmg_carriers_pick.py"
           echo "[acmg-carriers] WARN: --mode pick (python_pick) is DEPRECATED; fastVEP v0.5.0" \
                "output should use --mode fastvep_pick" >&2
-          EXTRA='--selection python_pick --stats-json "$PARTS/${name}.stats.json"'
+          EXTRA='--selection python_pick --no-markers --stats-json "$PARTS/${name}.stats.json"'
           if [ -n "$PICK_ORDER" ]; then EXTRA="$EXTRA --pick-order $(printf '%q' "$PICK_ORDER")"; fi
           if [ "$KEEP_FLANKING" = 1 ]; then EXTRA="$EXTRA --keep-flanking-genes"; fi ;;
     fastvep_pick)
@@ -73,7 +73,7 @@ case "$MODE" in
               echo "ERROR: --pick-order needs --mode pick; fastvep_pick uses fastVEP's own PICK flag" >&2; exit 2
           fi
           # Each chunk is let through; the chromosome total decides, after concat.
-          EXTRA='--selection fastvep_pick --allow-pick-anomalies --stats-json "$PARTS/${name}.stats.json"'
+          EXTRA='--selection fastvep_pick --allow-pick-anomalies --no-markers --stats-json "$PARTS/${name}.stats.json"'
           if [ "$KEEP_FLANKING" = 1 ]; then EXTRA="$EXTRA --keep-flanking-genes"; fi ;;
     *) echo "ERROR: --mode must be fastvep_pick, mane or pick (got $MODE)" >&2; exit 2 ;;
 esac
@@ -92,7 +92,24 @@ shopt -u nullglob
 [ ${#chunks[@]} -gt 0 ] || { echo "ERROR: no *.fastvep.vcf.gz in $INDIR" >&2; exit 3; }
 echo "[acmg-carriers] mode=$MODE ${#chunks[@]} chunk(s) in $INDIR" >&2
 
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+WORK="$(mktemp -d)"
+# Outcome marker in OUTDIR (carrier_markers.py): neither while running, FAILED
+# (reason, counts, exit code, time) on any non-zero exit — the tables may be
+# there and look complete — DONE on success. Readers refuse a FAILED dir.
+python3 "$HERE/carrier_markers.py" clear "$OUTDIR"
+FAIL_REASON="a step failed (see this job's stderr)"
+on_exit() {
+    local rc=$?
+    rm -rf "$WORK"
+    if [ "$rc" != 0 ]; then
+        local counts=""
+        [ -s "$OUTDIR/summary.txt" ] && counts="$(sed -n 's/^ *fastVEP PICK flag: //p' "$OUTDIR/summary.txt")"
+        python3 "$HERE/carrier_markers.py" failed "$OUTDIR" "$rc" "$FAIL_REASON" "$counts" || true
+        echo "[acmg-carriers] wrote $OUTDIR/FAILED (exit $rc: $FAIL_REASON)" >&2
+    fi
+}
+trap on_exit EXIT
+trap 'FAIL_REASON="killed by a signal"; exit 143' TERM INT
 mkdir -p "$WORK/parts"
 
 cat > "$WORK/run_one.sh" <<EOF
@@ -148,6 +165,7 @@ if [ "$n_variants" -ne "${#chunks[@]}" ] || [ "$n_carriers" -ne "${#chunks[@]}" 
     echo "ERROR: expected ${#chunks[@]} chunk output(s) but concatenated $n_variants variant" \
          "table(s) and $n_carriers carrier table(s). A chunk's output is missing — refusing" \
          "to publish a carrier table that would silently under-count the cohort." >&2
+    FAIL_REASON="chunk outputs missing: $n_variants variant / $n_carriers carrier tables for ${#chunks[@]} chunks"
     exit 4
 fi
 
@@ -161,7 +179,8 @@ if [ "$MODE" = pick ] || [ "$MODE" = fastvep_pick ]; then
     agg_rc=$?
     set -e
     cat "$OUTDIR/summary.txt" >&2
-    case "$agg_rc" in 0|3) ;; *) echo "ERROR: aggregating chunk stats failed ($agg_rc)" >&2; exit 4 ;; esac
+    case "$agg_rc" in 0|3) ;; *) echo "ERROR: aggregating chunk stats failed ($agg_rc)" >&2
+        FAIL_REASON="aggregating chunk stats failed ($agg_rc)"; exit 4 ;; esac
 fi
 cat "$WORK"/parts/*.stderr > "$OUTDIR/chunks.stderr.log"
 
@@ -169,7 +188,10 @@ if [ "${agg_rc:-0}" = 3 ]; then
     echo "ERROR: fastvep_pick found (allele, gene) rows without exactly one PICK=1 (see" \
          "summary.txt and chunks.stderr.log). Tables are written; failing so this is looked at;" \
          "--allow-pick-anomalies accepts it." >&2
+    FAIL_REASON="PICK anomalies: (allele, gene) rows without exactly one PICK=1"
     exit 5
 fi
+python3 "$HERE/carrier_markers.py" "done" "$OUTDIR" \
+    "mode=$MODE allow_pick_anomalies=$ALLOW_ANOM $(sed -n 's/^ *fastVEP PICK flag: //p' "$OUTDIR/summary.txt" 2>/dev/null || true)"
 echo "[acmg-carriers] done: $OUTDIR/acmg_variants.tsv ($(( $(wc -l < "$OUTDIR/acmg_variants.tsv") - 1 )) rows), " \
      "$OUTDIR/acmg_carriers.tsv ($(( $(wc -l < "$OUTDIR/acmg_carriers.tsv") - 1 )) rows)" >&2

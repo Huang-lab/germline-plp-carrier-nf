@@ -208,9 +208,86 @@ def test_chr_driver_fails_on_pick_anomalies_after_writing(tmp_path):
                          capture_output=True, text=True)
     assert res.returncode == 5, res.stderr
     assert "without exactly one PICK=1" in res.stderr
+    failed = (out / "FAILED").read_text()
+    assert "exit_code\t5" in failed and "PICK anomalies" in failed and "no PICK=1: 1" in failed
+    assert not (out / "DONE").exists()
     v = list(csv.DictReader((out / "acmg_variants.tsv").open(), delimiter="\t"))
     assert sorted(r["acmg_label"] for r in v) == ["NO_PICK_FLAG", "Pathogenic"]
     assert "with no PICK=1: 1" in (out / "summary.txt").read_text()
     ok = subprocess.run(["bash", str(DRIVER), "--in-dir", str(indir), "-o", str(out), "-j", "2",
                          "--allow-pick-anomalies"], capture_output=True, text=True)
     assert ok.returncode == 0, ok.stderr
+    assert (out / "DONE").exists() and not (out / "FAILED").exists()
+    assert "allow_pick_anomalies=1" in (out / "DONE").read_text()
+
+
+def _carrier_dir(root: Path, name: str, records, *extra):
+    d = root / name
+    d.mkdir(parents=True)
+    vcf = write_vcf(d.parent / f"{name}.vcf", records)
+    return d, subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf), "--out-variants",
+                              str(d / "acmg_variants.tsv"), "--out-carriers",
+                              str(d / "acmg_carriers.tsv"), *extra], capture_output=True, text=True)
+
+
+GOOD = [("21", 10, [blk("stop_gained", "BRCA2", "G1", "E1", "P", "PVS1", pick="1", mane="NM_1",
+                        impact="HIGH")], ("0/1", "0/0"))]
+BAD = [("21", 20, [blk("stop_gained", "BRCA2", "G1", "E1", "P", "PVS1", mane="NM_1"),
+                   blk("missense_variant", "BRCA2", "G1", "E2", "VUS")], ("0/1", "0/0"))]
+
+
+def test_builder_writes_markers(tmp_path):
+    d, r = _carrier_dir(tmp_path, "ok", GOOD)
+    assert r.returncode == 0 and (d / "DONE").exists() and not (d / "FAILED").exists()
+    d2, r2 = _carrier_dir(tmp_path, "bad", BAD)
+    assert r2.returncode == 3 and (d2 / "FAILED").exists() and not (d2 / "DONE").exists()
+    assert "exit_code\t3" in (d2 / "FAILED").read_text()
+    # a later successful run in the same dir clears the stale FAILED
+    vcf = write_vcf(tmp_path / "good.vcf", GOOD)
+    r3 = subprocess.run([sys.executable, str(SCRIPT), "--vcf", str(vcf), "--out-variants",
+                         str(d2 / "acmg_variants.tsv"), "--out-carriers", str(d2 / "acmg_carriers.tsv")],
+                        capture_output=True, text=True)
+    assert r3.returncode == 0 and (d2 / "DONE").exists() and not (d2 / "FAILED").exists()
+
+
+def test_readers_refuse_failed_dirs(tmp_path):
+    root = tmp_path / "fv"
+    _carrier_dir(root, "results-carriers-fastvep_pick-chr21_fv050", BAD)
+    genes = tmp_path / "genes.txt"
+    genes.write_text("BRCA2\n")
+    ex = [sys.executable, str(HERE.parent / "extract_gene_carriers.py"), "--pick-root", str(root),
+          "--prefix", "results-carriers-fastvep_pick-", "--genes", str(genes),
+          "--out", str(tmp_path / "o.tsv"), "--out-summary", str(tmp_path / "s.tsv")]
+    r = subprocess.run(ex, capture_output=True, text=True)
+    assert r.returncode == 4 and "FAILED marker" in r.stderr
+    r = subprocess.run([*ex, "--allow-pick-anomalies"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+    mane = tmp_path / "mane" / "results-carriers-chr21_v6"
+    mane.mkdir(parents=True)
+    vcf = write_vcf(tmp_path / "m.vcf", BAD)
+    subprocess.run([sys.executable, str(HERE.parent / "build_acmg_carriers.py"), "--vcf", str(vcf),
+                    "--out-variants", str(mane / "acmg_variants.tsv"),
+                    "--out-carriers", str(mane / "acmg_carriers.tsv")], check=True, capture_output=True)
+    cmp_ = [sys.executable, str(HERE.parent / "compare_acmg_pick_vs_mane.py"),
+            "--mane-root", str(tmp_path / "mane"), "--pick-root", str(root),
+            "--pick-prefix", "results-carriers-fastvep_pick-", "--strip-dir-suffix",
+            "--out", str(root / "comparison")]
+    r = subprocess.run(cmp_, capture_output=True, text=True)
+    assert r.returncode == 4 and "FAILED marker" in r.stderr
+    assert "no DONE marker" not in r.stderr or "mane" in r.stderr
+    r = subprocess.run([*cmp_, "--allow-pick-anomalies"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+
+def test_driver_writes_failed_on_missing_chunk(tmp_path, monkeypatch):
+    """The existing exit-4 path (a chunk's output missing) also leaves FAILED."""
+    indir = tmp_path / "results-fastvep-chr21_fv050"
+    indir.mkdir()
+    write_vcf(indir / "c1.fastvep.vcf.gz", GOOD, gz=True)
+    (indir / "c2.fastvep.vcf.gz").write_bytes(b"")          # empty chunk -> its worker fails
+    out = tmp_path / "out"
+    res = subprocess.run(["bash", str(DRIVER), "--in-dir", str(indir), "-o", str(out), "-j", "1"],
+                         capture_output=True, text=True)
+    assert res.returncode != 0
+    assert (out / "FAILED").exists() and not (out / "DONE").exists()
