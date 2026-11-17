@@ -32,6 +32,8 @@ Batch options:
   -P, --project <alloc>   LSF allocation (default: $MINERVA_ALLOCATION)
   --queue <q>             LSF queue (default: premium)
   --walltime <hh:mm>      LSF walltime (default: 4:00)
+  --mem <MB>              LSF memory per chunk job (default: 16000; an ACMG chunk
+                          peaked at 8.6 GB on Minerva, so 8000 gets jobs killed)
   --concat                after (local) runs, concatenate *.acmg_plp.tsv into one
                           (max over transcripts: for review, NOT a carrier source)
   --force                 re-run chunks whose existing output was made with a different
@@ -50,7 +52,7 @@ INDIR=""; OUTDIR=""; ACMG_CONFIG=""; THREADS=""
 FASTVEP="${FV_BIN:-}"; GFF3="${FV_GFF3:-}"; FASTA="${FV_FASTA:-}"
 TRANSCRIPT_CACHE="${FV_CACHE:-}"; SA_DIR="${FV_SA:-}"
 DO_ACMG=0; DO_HGVS=0; DO_PICK=0; USE_LSF=0; DO_CONCAT=0; FORCE=0
-PROJECT="${MINERVA_ALLOCATION:-}"; QUEUE="premium"; WALL="4:00"
+PROJECT="${MINERVA_ALLOCATION:-}"; QUEUE="premium"; WALL="4:00"; MEM="16000"
 ORIG_ARGS="$*"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -70,6 +72,7 @@ while [ $# -gt 0 ]; do
         -P|--project)         PROJECT="$2"; shift 2 ;;
         --queue)              QUEUE="$2"; shift 2 ;;
         --walltime)           WALL="$2"; shift 2 ;;
+        --mem)                MEM="$2"; shift 2 ;;
         --concat)             DO_CONCAT=1; shift ;;
         --force)              FORCE=1; shift ;;
         -h|--help)            usage ;;
@@ -236,7 +239,7 @@ for vcf in ${todo[@]+"${todo[@]}"}; do
     name="$(chunk_name "$vcf")"
     if [ "$USE_LSF" = 1 ]; then
         bsub -P "$PROJECT" -q "$QUEUE" -n "${THREADS:-2}" \
-             -R "rusage[mem=8000]" -W "$WALL" \
+             -R "rusage[mem=$MEM] span[hosts=1]" -W "$WALL" \
              -o "$OUTDIR/${name}.fastvep.%J.out" -e "$OUTDIR/${name}.fastvep.%J.err" \
              "$HERE/run_fastvep.sh" -i "$vcf" -o "$OUTDIR" "${common[@]}"
         printf '%s\tsubmitted\n' "$name" >> "$MANIFEST"
