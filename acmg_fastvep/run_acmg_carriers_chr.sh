@@ -32,12 +32,17 @@ Options:
   --allow-pick-anomalies
                     (fastvep_pick) exit 0 even if some (allele, gene) had no or several
                     PICK=1 blocks. Default: tables are written, then exit 5.
+  --allow-unchecked-inputs
+                    build even if carrier_inventory.py finds the chunk directory incomplete
+                    (a chunk the batch manifest lists has no VCF, an input VCF has no output),
+                    FAILED/submitted in batch_manifest.tsv, or made with more than one binary /
+                    sa_db / cache / flag set. Default: refuse, exit 4, FAILED marker.
 USAGE
     exit 2
 }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ALLOW_ANOM=0; INDIR=""; OUTDIR=""; JOBS=4; MODE=fastvep_pick; PICK_ORDER=""; KEEP_FLANKING=0
+ALLOW_ANOM=0; ALLOW_UNCHECKED=0; INDIR=""; OUTDIR=""; JOBS=4; MODE=fastvep_pick; PICK_ORDER=""; KEEP_FLANKING=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --in-dir)    INDIR="$2"; shift 2 ;;
@@ -47,6 +52,7 @@ while [ $# -gt 0 ]; do
         --pick-order) PICK_ORDER="$2"; shift 2 ;;
         --keep-flanking-genes) KEEP_FLANKING=1; shift ;;
         --allow-pick-anomalies) ALLOW_ANOM=1; shift ;;
+        --allow-unchecked-inputs) ALLOW_UNCHECKED=1; shift ;;
         -h|--help)   usage ;;
         *) echo "Unknown arg: $1" >&2; usage ;;
     esac
@@ -111,6 +117,18 @@ on_exit() {
 trap on_exit EXIT
 trap 'FAIL_REASON="killed by a signal"; exit 143' TERM INT
 mkdir -p "$WORK/parts"
+
+# Is the directory what the batch driver wrote: every chunk present, none FAILED, one origin?
+# Without this the table is built from whatever *.fastvep.vcf.gz exist, exits 0 and gets DONE
+# over a smaller cohort (a chunk whose job never ran, a rerun that failed on one chunk).
+if [ "$ALLOW_UNCHECKED" = 1 ]; then
+    INVENTORY="overridden"
+    echo "[acmg-carriers] WARN: --allow-unchecked-inputs: not checking the chunk inventory of $INDIR" >&2
+else
+    FAIL_REASON="chunk inventory check failed (see this job's stderr)"
+    INVENTORY="$(python3 "$HERE/carrier_inventory.py" "$INDIR")" || exit 4
+    FAIL_REASON="a step failed (see this job's stderr)"
+fi
 
 cat > "$WORK/run_one.sh" <<EOF
 #!/usr/bin/env bash
@@ -192,6 +210,6 @@ if [ "${agg_rc:-0}" = 3 ]; then
     exit 5
 fi
 python3 "$HERE/carrier_markers.py" "done" "$OUTDIR" \
-    "mode=$MODE allow_pick_anomalies=$ALLOW_ANOM $(sed -n 's/^ *fastVEP PICK flag: //p' "$OUTDIR/summary.txt" 2>/dev/null || true)"
+    "mode=$MODE allow_pick_anomalies=$ALLOW_ANOM chunks=${#chunks[@]} inventory=$INVENTORY $(sed -n 's/^ *fastVEP PICK flag: //p' "$OUTDIR/summary.txt" 2>/dev/null || true)"
 echo "[acmg-carriers] done: $OUTDIR/acmg_variants.tsv ($(( $(wc -l < "$OUTDIR/acmg_variants.tsv") - 1 )) rows), " \
      "$OUTDIR/acmg_carriers.tsv ($(( $(wc -l < "$OUTDIR/acmg_carriers.tsv") - 1 )) rows)" >&2
