@@ -53,3 +53,4 @@ SINAI-Million_*
 !*.yaml
 !*.yml
 logs/
+*.out
