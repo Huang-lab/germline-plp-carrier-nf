@@ -1,8 +1,10 @@
 # ACMG-AMP criteria reference, and how this pipeline reports them
 
 This is a reference for the `acmg_criteria` codes and other ACMG-related
-columns produced by `acmg_fastvep/build_acmg_carriers.py` (and
-`acmg_fastvep/parse_fastvep_acmg.py`). None of the classification logic lives
+columns produced by `acmg_fastvep/build_acmg_carriers_pick.py` (the default
+carrier builder), `acmg_fastvep/build_acmg_carriers.py` (the older builder that
+reads MANE Select only) and `acmg_fastvep/parse_fastvep_acmg.py`. None of the
+classification logic lives
 in this repo — every code and label here is computed by fastVEP
 (Huang-lab/fastVEP) itself, using the standard published criteria. This
 document only explains what those codes mean and how this pipeline reports
@@ -14,15 +16,25 @@ fastVEP's `--acmg` mode implements the ACMG-AMP framework from
 [Richards et al. 2015](https://pubmed.ncbi.nlm.nih.gov/25741868/), with
 [ClinGen SVI](https://clinicalgenome.org/working-groups/sequence-variant-interpretation/)
 calibration (e.g. REVEL thresholds for PP3/BP4, PM2 downgraded to
-"Supporting" strength). It evaluates all 28 criteria per transcript, using
-real evidence (gnomAD population frequency, ClinVar, REVEL, SpliceAI, gene
-constraint, and more), then combines the criteria that fire into one of five
-tiers via the standard ACMG combining rules.
+"Supporting" strength). It evaluates, per transcript, the criteria that the
+supplementary-annotation databases it was given make possible (gnomAD
+population frequency, ClinVar, REVEL, SpliceAI, gene constraint, and more),
+then combines the criteria that fire into one of five tiers via the standard
+ACMG combining rules.
+
+Not every criterion is evaluated in a given run.
+fastVEP's own `docs/ACMG.md` (v0.5.0) says "a default run reports 26", and the tables below list 28 codes.
+In the JSON output of fastVEP v0.5.0 for one stop-gained variant, annotated with only gnomAD allele frequency, gnomAD gene constraint and an OMIM-format gene-disease table, 26 distinct codes were present (the 28 below except PP5 and BP6) and 11 of them had `evaluated: true` in at least one transcript: BP1, BP3, BP7, PM1, PM2_Supporting, PM3, PM4, PM5, PP2, PS1 and PVS1.
+For the codes that were not evaluated, fastVEP's own explanation was that PS2 and PM6 need a trio VCF, PS3 needs curated functional evidence (`--functional-evidence`), PS4 needs case-control statistics, and PP1 needs a multi-generation pedigree.
+`run_fastvep.sh --acmg` supplies none of these inputs.
 
 This pipeline's job is narrower: **retrieve** that already-computed result
-for the correct transcript (MANE Select) and **match** it to sample
-genotypes to find carriers. See `acmg_fastvep/build_acmg_carriers.py`'s
-module docstring for exactly how the transcript is chosen.
+for the correct transcript and **match** it to sample genotypes to find
+carriers.
+The default builder, `build_acmg_carriers_pick.py`, takes the block that fastVEP
+itself marked `PICK=1` for each (allele, gene).
+The older `build_acmg_carriers.py` takes the MANE Select block only.
+See each script's module docstring for exactly how the transcript is chosen.
 
 ## The five-tier label (`acmg_label`)
 
@@ -85,6 +97,7 @@ codes appear in `acmg_criteria` joined by `;`.
 - **`consequence` / `impact` / `hgvsc` / `hgvsp` / `exon` / `intron`** — retrieved from
   the *same* MANE Select transcript block used for `acmg_label`/`acmg_criteria`,
   never mixed with a different transcript's context.
+- **`n_pathogenic_criteria` / `n_benign_criteria`**: how many codes in `acmg_criteria` point towards pathogenic (PVS, PS, PM, PP) and towards benign (BA, BS, BP).
 - **`is_lof_consequence`** — 1 if `consequence` is one of the standard fixed
   "predicted loss-of-function" terms (`stop_gained`, `frameshift_variant`,
   `splice_acceptor_variant`, `splice_donor_variant`, `start_lost` — the
@@ -104,13 +117,26 @@ codes appear in `acmg_criteria` joined by `;`.
   term seen across all of that variant's transcript blocks (semicolon-joined),
   so a flagged row can be told apart from truly intergenic space — nothing is
   picked or resolved on your behalf.
+  This label is written by `build_acmg_carriers.py`.
+  It is not written for a variant that lies near a MANE gene: such a variant is reported against that gene's MANE Select block, as `upstream_gene_variant` or `downstream_gene_variant` (VUS in the run described next).
+  On a synthetic genome in which every gene was within 5 kb of another (fastVEP's default `--distance 5000`), four stop_gained variants in genes without a MANE Select transcript were therefore absent from the table, and the summary said `0 flagged NO_MANE_TRANSCRIPT`.
+  `build_acmg_carriers_pick.py` keeps such variants.
 
 ## Per-gene pick variant (`build_acmg_carriers_pick.py`)
 
-Same columns as above, plus five, from the same fastVEP output (no re-run).
-Instead of MANE Select only, each (variant, gene) reports the one CSQ block
-that fastVEP's `--pick-allele-gene` would keep, using a port of
-Huang-lab/fastVEP `crates/fastvep-annotate/src/pick.rs`:
+This is the default carrier builder.
+It writes the same columns as above plus the ones listed below, from the same fastVEP output (no re-run).
+Instead of MANE Select only, each (variant, gene) reports one CSQ block.
+`--selection` says which:
+
+- `fastvep_pick` (default): the block that fastVEP itself marked `PICK=1` for that (allele, gene).
+  The input must be fastVEP v0.5.0 or later output made with `--flag-pick-allele-gene`, which `run_fastvep.sh --acmg` passes.
+  Nothing is ported or re-implemented, and a CSQ without a `PICK` field is an error (exit 2).
+- `python_pick` (DEPRECATED): a port of Huang-lab/fastVEP `crates/fastvep-annotate/src/pick.rs`, kept for a one-time comparison against output that has no `PICK` field (the v6 outputs).
+  The tier table and `--pick-order` below apply to this mode only.
+  `--pick-order` together with the default mode is an error.
+
+### `python_pick` tiers
 
 | tier | scores (lower wins) |
 |---|---|
@@ -122,18 +148,21 @@ Huang-lab/fastVEP `crates/fastvep-annotate/src/pick.rs`:
 | `ccds` | 0 if a CCDS ID is set, else 1 |
 | `rank` | most severe SO term's VEP 115 rank (transcript_ablation=1 … ); none = worst |
 
-Default `--pick-order mane_select,mane_plus_clinical,canonical,tsl,biotype,ccds,rank`;
+In `python_pick` mode the default is `--pick-order mane_select,mane_plus_clinical,canonical,tsl,biotype,ccds,rank`;
 the VEP-path order `mane_select,canonical,tsl,biotype,rank,ccds` is also
 accepted. Remaining ties go to the lowest transcript ID. Genes are grouped by
 the CSQ `Gene` ID, as fastVEP does.
 
+### Columns added by the pick table
+
 - **`transcript_id`** — `Feature` of the picked block.
-- **`pick_tier`** — the first tier at which the winner beat the runner-up;
+- **`pick_tier`**: `fastvep_pick` on every row in the default mode.
+  In `python_pick` mode it is the first tier at which the winner beat the runner-up;
   `only_candidate` when the gene had one transcript block, `tie_id` when all
   listed tiers tied and the transcript ID decided.
 - **`is_mane_select`** — 1 if the picked block is the MANE Select transcript.
-- **`acmg_label_mane`** — the MANE Select block's label for that gene, empty
-  if the gene has no MANE Select block at this variant.
+- **`acmg_label_mane`**: the MANE Select block's label for that gene.
+  If the gene has no MANE Select block at this variant it is `NO_MANE_TRANSCRIPT` in the default mode (the row still reports fastVEP's `PICK=1` block, so the call is kept), and empty in `python_pick` mode.
 - **`mane_discordant`** — 1 if `is_acmg_PLP` differs between the picked block
   and the MANE block, 0 if it agrees, empty if there is no MANE block. With any
   order that starts with `mane_select`, a gene's MANE block always wins, so
@@ -145,6 +174,15 @@ the CSQ `Gene` ID, as fastVEP does.
 - Carrier `zygosity = hemi` — a haploid non-ref GT (e.g. `1` on male chrX
   outside the PARs). These were previously dropped; the fix applies to
   `build_acmg_carriers.py` too.
+- **`acmg_disorders`**: the trailing `ACMG_DISORDERS` field of fastVEP v0.5.0 (`INHERITANCE:CLASS:CRITERIA` per mode of inheritance, joined by `&`), copied as it is.
+- **`pick_flag`**: `ok` on a normal row.
+  On a row that the PICK check flagged it says why: `no_pick`, or `multi_pick:` followed by each flagged transcript and its label.
+- **`acmg_label = NO_PICK_FLAG` / `MULTIPLE_PICK_FLAGS`** (default mode): the (allele, gene) had no `PICK=1` block, or more than one.
+  The row is not resolved, and `is_acmg_PLP` is 0.
+  fastVEP's `--flag-pick-allele-gene` flags exactly one block per (allele, gene), so such a row means the output and this parser disagree.
+  Both tables are still written, then the script exits 3 and writes a FAILED marker (a DONE marker otherwise).
+  `--allow-pick-anomalies` accepts the rows, and `--no-markers` writes neither marker.
+  In a test on a synthetic cohort, output made with `--flag-pick` or with `--flag-pick-allele` gave exit 3 with five `NO_PICK_FLAG` rows, and output made with `--pick` (which removes the `PICK` field) gave exit 2.
 
 ### Functional and population columns (pick variant only)
 
