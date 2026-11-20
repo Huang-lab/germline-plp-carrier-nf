@@ -205,6 +205,7 @@ for c in $CHROMS; do
         continue
     fi
     if [ ! -e "$f.ok" ]; then
+        rm -f "$f.full.ok"   # a full check of an earlier copy says nothing about this one
         if gnomad_ok "$f" "$c"; then
             echo "[fetch] $f already complete (BGZF EOF + tabix)" >&2
         else
@@ -213,13 +214,17 @@ for c in $CHROMS; do
             bgzf_eof_ok "$f" || die "$f does not end in a BGZF EOF block (truncated)"
             gnomad_ok "$f" "$c" || die "tabix -l $f does not list chr${c}"
         fi
-        if [ "$FULL_CHECK" = 1 ]; then
-            command -v bgzip >/dev/null 2>&1 || die "--full-check needs bgzip"
-            bgzip -t "$f" || die "$f fails bgzip -t"
-        fi
         date -u +%Y%m%d > "$f.ok"
     fi
-    register "$f" "$url" "gnomAD v4.1 exomes; EOF+tabix verified$( [ "$FULL_CHECK" = 1 ] && echo '+bgzip -t')"
+    # bgzip -t has its own marker: .ok only records the shallow check, so an
+    # earlier shallow run must not let --full-check skip the decompression.
+    if [ "$FULL_CHECK" = 1 ] && [ ! -e "$f.full.ok" ]; then
+        command -v bgzip >/dev/null 2>&1 || die "--full-check needs bgzip"
+        bgzip -t "$f" || die "$f fails bgzip -t"
+        date -u +%Y%m%d > "$f.full.ok"
+    fi
+    # The note says what was verified, from the markers, not from the flag.
+    register "$f" "$url" "gnomAD v4.1 exomes; EOF+tabix verified$( [ -e "$f.full.ok" ] && echo '+bgzip -t')"
     if [ -e "$f.tbi" ] || [ -s "$f.tbi.sha256" ]; then register "$f.tbi" "$url.tbi" ""; fi
 done
 

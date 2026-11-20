@@ -192,3 +192,51 @@ def test_bad_md5_still_fails(env):
     (env["fix"] / "clinvar_20261109.vcf.gz.md5").write_text("0" * 32 + "  x\n")
     r = _run(env, "--clinvar-date", "20261109")
     assert r.returncode != 0 and "md5" in r.stderr
+
+
+def _corrupt_middle(path: Path):
+    """Flip bytes in the middle of a BGZF file; the EOF block and the index stay intact,
+    so the default (EOF + tabix -l) check still passes and only bgzip -t can tell."""
+    data = bytearray(path.read_bytes())
+    mid = len(data) // 2
+    for i in range(mid, mid + 40):
+        data[i] ^= 0xFF
+    path.write_bytes(bytes(data))
+
+
+def _gnomad_note(env):
+    rows = (env["src"] / "SOURCES.tsv").read_text().splitlines()
+    hdr = rows[0].split("\t")
+    for ln in rows[1:]:
+        cols = ln.split("\t")
+        if cols[0] == "gnomad.exomes.v4.1.sites.chr21.vcf.bgz":
+            return cols[hdr.index("note")] if "note" in hdr else cols[-1]
+    raise AssertionError("gnomAD file not registered in SOURCES.tsv")
+
+
+def test_full_check_runs_bgzip_t_even_with_an_ok_marker(env):
+    """Issue #11: a shallow run writes .ok; a later --full-check must still run
+    bgzip -t, fail on a file corrupt in the middle, and not claim '+bgzip -t'."""
+    assert _run(env, "--clinvar-date", "20261109").returncode == 0
+    g = env["src"] / "gnomad.exomes.v4.1.sites.chr21.vcf.bgz"
+    assert (env["src"] / (g.name + ".ok")).exists()
+    assert "bgzip -t" not in _gnomad_note(env)
+    _corrupt_middle(g)
+    r = _run(env, "--clinvar-date", "20261109", "--full-check")
+    assert r.returncode != 0, "a corrupt gnomAD file passed --full-check"
+    assert "fails bgzip -t" in r.stderr
+    assert not (env["src"] / (g.name + ".full.ok")).exists()
+    assert "bgzip -t" not in _gnomad_note(env)
+
+
+def test_full_check_records_bgzip_t_only_once_it_passed(env):
+    """A clean file: --full-check after a shallow run passes, writes .full.ok, and the
+    note says '+bgzip -t'; a later shallow run keeps saying so, from the marker."""
+    assert _run(env, "--clinvar-date", "20261109").returncode == 0
+    g = env["src"] / "gnomad.exomes.v4.1.sites.chr21.vcf.bgz"
+    r = _run(env, "--clinvar-date", "20261109", "--full-check")
+    assert r.returncode == 0, r.stderr
+    assert (env["src"] / (g.name + ".full.ok")).exists()
+    assert _gnomad_note(env).endswith("+bgzip -t")
+    assert _run(env, "--clinvar-date", "20261109").returncode == 0
+    assert _gnomad_note(env).endswith("+bgzip -t")
