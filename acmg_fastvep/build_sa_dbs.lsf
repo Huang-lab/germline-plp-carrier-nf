@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#BSUB -J fv050-sa[1-24]
+#BSUB -q premium
+#BSUB -n 1
+#BSUB -R "rusage[mem=8000] span[hosts=1]"
+#BSUB -W 4:00
+#BSUB -oo logs/fv050-sa.%J.%I.out
+#BSUB -eo logs/fv050-sa.%J.%I.err
+#
+# LSF wrapper for build_sa_dbs.sh. Two submissions, from the repo root on a
+# Minerva LOGIN node, after setup_fastvep.sh and fetch_sa_sources.sh:
+#
+#   export MINERVA_ALLOCATION=acc_<project>
+#   export FV_ENV=$FV_HOME/env.sh            # what setup_fastvep.sh wrote
+#   mkdir -p logs
+#
+#   # 1) the per-chromosome array: index 1..22 -> chr1..22, 23 -> X, 24 -> Y.
+#   #    1 core, 8 GB, 4 h per chromosome (the #BSUB defaults above).
+#   bsub -P "$MINERVA_ALLOCATION" < acmg_fastvep/build_sa_dbs.lsf
+#
+#   # 2) the whole-genome databases, one job: 1 core, 16 GB, 2 h.
+#   #    Command-line -J/-R/-W override the #BSUB lines above.
+#   FV_SA_MODE=single bsub -P "$MINERVA_ALLOCATION" -J fv050-sa-single \
+#       -R "rusage[mem=16000] span[hosts=1]" -W 2:00 \
+#       -oo logs/fv050-sa-single.%J.out -eo logs/fv050-sa-single.%J.err \
+#       < acmg_fastvep/build_sa_dbs.lsf
+#
+# Re-running either is safe: a database with its .done marker is skipped.
+# Optional: FV_SA_ARGS="--delete-gnomad-src" (array) or "--use-omim" (single).
+set -euo pipefail
+
+: "${FV_ENV:?set FV_ENV=<\$FV_HOME/env.sh written by setup_fastvep.sh>}"
+# shellcheck disable=SC1090
+. "$FV_ENV"
+
+HERE=""
+for cand in "$(cd "$(dirname "$0")" 2>/dev/null && pwd)" \
+            "${LSB_SUBCWD:-$PWD}/acmg_fastvep" "$PWD/acmg_fastvep" "${FV_REPO:-}/acmg_fastvep"; do
+    [ -n "$cand" ] && [ -f "$cand/build_sa_dbs.sh" ] && { HERE="$cand"; break; }
+done
+[ -n "$HERE" ] || { echo "ERROR: cannot find build_sa_dbs.sh — submit from the repo root, or set FV_REPO=<repo path>" >&2; exit 3; }
+
+# shellcheck disable=SC2086
+if [ "${FV_SA_MODE:-array}" = single ]; then
+    exec "$HERE/build_sa_dbs.sh" --single ${FV_SA_ARGS:-}
+fi
+
+: "${LSB_JOBINDEX:?not an array task; set FV_SA_MODE=single for the whole-genome job}"
+case "$LSB_JOBINDEX" in
+    23) CHROM=X ;;
+    24) CHROM=Y ;;
+    *)  [ "$LSB_JOBINDEX" -ge 1 ] && [ "$LSB_JOBINDEX" -le 22 ] || {
+            echo "ERROR: array index $LSB_JOBINDEX outside 1-24" >&2; exit 2; }
+        CHROM="$LSB_JOBINDEX" ;;
+esac
+echo "[build_sa_dbs.lsf] index=$LSB_JOBINDEX -> chr$CHROM" >&2
+# shellcheck disable=SC2086
+exec "$HERE/build_sa_dbs.sh" --chrom "$CHROM" ${FV_SA_ARGS:-}

@@ -5,9 +5,9 @@ name: CI
 # nothing ran them on push.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, fastvep-v0.5.0]
   push:
-    branches: [main]
+    branches: [main, fastvep-v0.5.0]
 
 permissions:
   contents: read
@@ -48,6 +48,10 @@ jobs:
         # No pyproject/requirements for the test path: the suite deliberately
         # depends on nothing but the stdlib so it runs on a bare cluster node.
         run: python -m pip install --quiet pytest
+      - name: Install htslib (bgzip, tabix) and unzip
+        # test_fetch_sa_sources.py skips itself without them, which hid the
+        # --full-check bug in issue #11 from CI.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tabix unzip
       - name: Pipeline unit tests
         run: python -m pytest tests/ -q
       - name: acmg_fastvep wrapper tests

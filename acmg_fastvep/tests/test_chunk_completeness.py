@@ -22,6 +22,7 @@ Each test is written to fail against the pre-fix scripts. Only `bash` and
 from __future__ import annotations
 
 import gzip
+import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -72,6 +73,19 @@ def _chunk_vcf(d: Path, name: str) -> Path:
     return vcf
 
 
+def _refs(tmp_path: Path, fake: Path) -> tuple[list[str], dict]:
+    """The reference args every run now needs (FASTA + transcript cache), and an
+    env whose FV_BIN_SHA256 pins `fake` as the expected binary."""
+    fa = tmp_path / "ref.fa"
+    fa.write_text(">17\nACGT\n")
+    cache = tmp_path / "ref.fastvep.cache"
+    cache.write_text("cache\n")
+    sha = hashlib.sha256(fake.read_bytes()).hexdigest()
+    env = {k: v for k, v in os.environ.items() if not k.startswith("FV_")}
+    env["FV_BIN_SHA256"] = sha
+    return ["--fasta", str(fa), "--transcript-cache", str(cache)], env
+
+
 def test_killed_run_publishes_nothing(tmp_path):
     """A chunk that dies mid-write must leave no final output to be mistaken
     for a finished one."""
@@ -81,11 +95,12 @@ def test_killed_run_publishes_nothing(tmp_path):
     gff3 = tmp_path / "genes.gff3"
     gff3.write_text("##gff-version 3\n")
     fake = _fake_fastvep(tmp_path, records=200, exit_code=137)
+    refs, env = _refs(tmp_path, fake)
 
     r = subprocess.run(
         ["bash", str(RUNNER), "-i", str(indir / "chunk1.norm.vcf.gz"),
-         "-o", str(outdir), "--gff3", str(gff3), "--fastvep", str(fake)],
-        capture_output=True, text=True,
+         "-o", str(outdir), "--gff3", str(gff3), "--fastvep", str(fake), *refs],
+        capture_output=True, text=True, env=env,
     )
     assert r.returncode != 0, "a killed fastvep must fail the wrapper"
 
@@ -97,7 +112,7 @@ def test_killed_run_publishes_nothing(tmp_path):
         "this chunk forever."
     )
     # And no partial left lying around to confuse the next run.
-    assert not list(outdir.glob(".*partial")), "stale .partial left behind"
+    assert not list(outdir.glob(".*partial*")), "stale .partial left behind"
 
 
 def test_truncated_output_is_a_valid_gzip_stream(tmp_path):
@@ -128,13 +143,12 @@ def test_batch_driver_reruns_a_chunk_left_partial(tmp_path):
     _chunk_vcf(indir, "chunk1")
     gff3 = tmp_path / "genes.gff3"
     gff3.write_text("##gff-version 3\n")
-    env = dict(os.environ)
-
     # First attempt dies.
     dying = _fake_fastvep(tmp_path, records=50, exit_code=137)
+    refs, env = _refs(tmp_path, dying)
     subprocess.run(
         ["bash", str(BATCH), "--in-dir", str(indir), "-o", str(outdir),
-         "--gff3", str(gff3), "--fastvep", str(dying)],
+         "--gff3", str(gff3), "--fastvep", str(dying), *refs],
         capture_output=True, text=True, env=env,
     )
     manifest = (outdir / "batch_manifest.tsv").read_text()
@@ -142,9 +156,10 @@ def test_batch_driver_reruns_a_chunk_left_partial(tmp_path):
 
     # Second attempt succeeds and must actually run, not skip.
     good = _fake_fastvep(tmp_path, records=50, exit_code=0)
+    refs, env = _refs(tmp_path, good)
     subprocess.run(
         ["bash", str(BATCH), "--in-dir", str(indir), "-o", str(outdir),
-         "--gff3", str(gff3), "--fastvep", str(good)],
+         "--gff3", str(gff3), "--fastvep", str(good), *refs],
         capture_output=True, text=True, env=env,
     )
     manifest = (outdir / "batch_manifest.tsv").read_text()
@@ -234,3 +249,43 @@ def test_carrier_matrix_refuses_mismatched_headers(tmp_path):
 @pytest.mark.parametrize("script", [RUNNER, BATCH, CARRIER])
 def test_scripts_are_syntactically_valid(script):
     assert subprocess.run(["bash", "-n", str(script)]).returncode == 0
+
+
+def test_acmg_run_parses_the_gzipped_partial_and_publishes_both(tmp_path):
+    """--acmg end to end with a fastvep that succeeds.
+
+    run_fastvep.sh hands parse_fastvep_acmg.py the temp file
+    `.<name>.fastvep.vcf.gz.partial`. The parser used to pick gzip by the
+    `.gz` suffix, so it read that gzip stream as text and died with
+    UnicodeDecodeError (byte 0x8b) - after fastVEP had done all the work,
+    which the EXIT trap then deleted. Every --acmg run hit it.
+    """
+    indir, outdir, sa = tmp_path / "norm_qc", tmp_path / "out", tmp_path / "sa"
+    sa.mkdir()
+    _chunk_vcf(indir, "chunk1")
+    gff3 = tmp_path / "genes.gff3"
+    gff3.write_text("##gff-version 3\n")
+    fake = tmp_path / "fake_fastvep_ok"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "##fileformat=VCFv4.2\\n"\n'
+        'printf "##INFO=<ID=CSQ,Number=.,Type=String,Description=\\"fastVEP. '
+        'Format: Allele|SYMBOL|ACMG|ACMG_CRITERIA\\">\\n"\n'
+        'printf "#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\n"\n'
+        'printf "17\\t100\\t.\\tA\\tG\\t.\\tPASS\\tCSQ=G|BRCA1|LP|PVS1\\n"\n'
+    )
+    fake.chmod(0o755)
+    (sa / "SA_DB_SHA256.txt").write_text("abc  clinvar.osa2\n")
+    refs, env = _refs(tmp_path, fake)
+    r = subprocess.run(
+        ["bash", str(RUNNER), "-i", str(indir / "chunk1.norm.vcf.gz"), "-o", str(outdir),
+         "--gff3", str(gff3), "--fastvep", str(fake), "--acmg", "--sa-dir", str(sa), *refs],
+        capture_output=True, text=True, env=env,
+    )
+    assert r.returncode == 0, r.stderr
+    with gzip.open(outdir / "chunk1.fastvep.vcf.gz", "rt") as fh:
+        assert "CSQ=G|BRCA1|LP|PVS1" in fh.read()
+    rows = (outdir / "chunk1.acmg_plp.tsv").read_text().splitlines()
+    assert rows[0] == ACMG_HEADER
+    assert rows[1].split("\t")[:6] == ["17", "100", "A", "G", "BRCA1", "Likely_pathogenic"]
+    assert not list(outdir.glob(".*partial*"))
