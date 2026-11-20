@@ -175,7 +175,8 @@ def _zygosity(gt: str):
     return "hom" if a == b else "het"
 
 
-def process_vcf(path: str, out_variants, out_carriers, stats: dict) -> None:
+def process_vcf(path: str, out_variants, out_carriers, stats: dict,
+                allow_multiallelic: bool = False) -> None:
     schema = None
     i_sym = i_acmg = i_crit = i_mane = -1
     i_func = {}
@@ -233,6 +234,17 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict) -> None:
                 continue
 
             stats["total_variants"] += 1
+            if "," in alt:
+                # Carriers are read as if a record had one alt allele: a person who carries only
+                # one allele of a multi-allelic record would be called a carrier of the P/LP one.
+                if not allow_multiallelic:
+                    print(f"ERROR: {chrom}:{pos} {ref}>{alt} has more than one ALT allele ({path}). Split the "
+                          "input first (bcftools norm -m -any -f <ref.fa>, as the pipeline's NORM_QC does), "
+                          "or pass --allow-multiallelic to skip such records (they are counted).",
+                          file=_sys.stderr)
+                    _sys.exit(2)
+                stats["multiallelic_records"] += 1
+                continue
             blocks = csq.split(",")
             by_gene = _find_mane_blocks_by_gene(blocks, i_mane, i_sym)
 
@@ -325,22 +337,26 @@ def main() -> int:
     ap.add_argument("--vcf", required=True, nargs="+", help="one or more fastVEP --acmg VCF outputs")
     ap.add_argument("--out-variants", required=True)
     ap.add_argument("--out-carriers", required=True)
+    ap.add_argument("--allow-multiallelic", action="store_true",
+                    help="skip records with more than one ALT allele, counting them (default: refuse "
+                         "with exit 2; split the input with `bcftools norm -m -any` instead)")
     args = ap.parse_args()
 
     stats = {"total_variants": 0, "gene_rows": 0, "no_mane": 0, "multi_gene_variants": 0,
-              "same_gene_multi_mane_anomaly": 0, "carrier_rows": 0}
+              "same_gene_multi_mane_anomaly": 0, "carrier_rows": 0, "multiallelic_records": 0}
 
     with open(args.out_variants, "w", encoding="utf-8") as ov, \
          open(args.out_carriers, "w", encoding="utf-8") as oc:
         ov.write(VARIANT_HEADER)
         oc.write(CARRIER_HEADER)
         for path in args.vcf:
-            process_vcf(path, ov, oc, stats)
+            process_vcf(path, ov, oc, stats, args.allow_multiallelic)
 
     print(f"[build_acmg_carriers] {stats['total_variants']} variants -> {stats['gene_rows']} "
           f"(variant, gene) rows ({stats['multi_gene_variants']} variants overlapped 2+ genes' "
           f"MANE transcripts); {stats['no_mane']} flagged {NO_MANE_SENTINEL}; "
           f"{stats['same_gene_multi_mane_anomaly']} same-gene multi-MANE anomalies; "
+          f"multi-allelic ALT records skipped: {stats['multiallelic_records']}; "
           f"{stats['carrier_rows']} carrier rows written", file=_sys.stderr)
     return 0
 

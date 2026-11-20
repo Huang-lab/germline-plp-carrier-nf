@@ -45,9 +45,12 @@ featureless "scaffold" rows (no transcript). Both are reproduced here. The
 output `gene` column is still the SYMBOL, as in the MANE-only table.
 
 Known simplification, shared with build_acmg_carriers.py: a record is treated
-as one alt allele (the SpliceAI lookup and the carrier GT logic already
-assume split multi-allelics). Multi-allelic ALT records are counted in the
-stderr summary so this is visible if it ever happens.
+as one alt allele (the SpliceAI lookup and the carrier GT logic assume split
+multi-allelics, which the pipeline's NORM_QC produces with `bcftools norm -m
+-any`). A record with more than one ALT allele is therefore REFUSED (exit 2),
+because a person who carries only one of its alleles would be written as a
+carrier of every P/LP allele of the record. `--allow-multiallelic` skips such
+records instead (no row, no carrier) and counts them in the stderr summary.
 """
 from __future__ import annotations
 
@@ -481,7 +484,8 @@ def _acmg_of(f, idx):
 
 
 def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[str],
-                drop_flanking: bool = True, selection: str = "fastvep_pick") -> None:
+                drop_flanking: bool = True, selection: str = "fastvep_pick",
+                allow_multiallelic: bool = False) -> None:
     idx: dict[str, int] = {}
     spliceai_id = None
     fv_formats: dict[str, tuple] = {}
@@ -547,7 +551,16 @@ def process_vcf(path: str, out_variants, out_carriers, stats: dict, order: list[
 
             stats["total_variants"] += 1
             if "," in alt:
+                if not allow_multiallelic:
+                    print(f"ERROR: {chrom}:{pos} {ref}>{alt} has more than one ALT allele ({path}). Carriers "
+                          "are extracted as if a record had one alt allele, so a person who carries only one "
+                          "of its alleles would be written as a carrier of every P/LP allele of the record. "
+                          "Split the input first (bcftools norm -m -any -f <ref.fa>, as the pipeline's "
+                          "NORM_QC does), or pass --allow-multiallelic to skip such records (they are counted).",
+                          file=_sys.stderr)
+                    _sys.exit(2)
                 stats["multiallelic_records"] += 1
+                continue
             raw_blocks = csq.split(",")
 
             # Group candidate blocks by gene. Scaffold / featureless blocks
@@ -714,7 +727,7 @@ def format_summary(stats: dict, order: list[str], drop_flanking: bool,
         f"{stats['variants_all_flanking']}\n"
         f"  {NO_TRANSCRIPT_SENTINEL} (no gene at all): {stats['no_transcript']}\n"
         f"  P/LP rows: {stats['plp_rows']}; mane_discordant rows: {stats['mane_discordant_rows']}\n"
-        f"  multi-allelic ALT records: {stats['multiallelic_records']}; variants whose "
+        f"  multi-allelic ALT records skipped: {stats['multiallelic_records']}; variants whose "
         f"FV_CLINVAR/FV_GNOMAD/FV_REVEL had no entry for the alt allele: "
         f"{stats['fv_allele_unmatched']}\n"
         f"  carrier rows: {stats['carrier_rows']} (hemizygous calls: {stats['hemi_calls']})"
@@ -748,6 +761,9 @@ def main(argv=None) -> int:
     ap.add_argument("--allow-pick-anomalies", action="store_true",
                     help="fastvep_pick: exit 0 even when an (allele, gene) had no or several "
                          "PICK=1 blocks (default: exit 3 after writing the outputs)")
+    ap.add_argument("--allow-multiallelic", action="store_true",
+                    help="skip records with more than one ALT allele, counting them (default: refuse "
+                         "with exit 2; split the input with `bcftools norm -m -any` instead)")
     args = ap.parse_args(argv)
 
     if args.selection == "fastvep_pick" and args.pick_order is not None:
@@ -768,7 +784,8 @@ def main(argv=None) -> int:
         ov.write(VARIANT_HEADER)
         oc.write(CARRIER_HEADER)
         for path in args.vcf:
-            process_vcf(path, ov, oc, stats, order, args.drop_flanking, args.selection)
+            process_vcf(path, ov, oc, stats, order, args.drop_flanking, args.selection,
+                        args.allow_multiallelic)
 
     print(format_summary(stats, order, args.drop_flanking, args.selection), file=_sys.stderr)
     if args.stats_json:
