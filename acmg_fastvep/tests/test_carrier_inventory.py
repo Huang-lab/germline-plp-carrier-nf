@@ -148,6 +148,19 @@ def test_driver_complete_directory_records_chunk_count_in_done(tmp_path):
     assert "chunks=3 inventory=checked" in done_detail(out)
 
 
+def test_driver_records_mode_and_pipeline_commit_in_done(tmp_path):
+    """Issue #9: the table says which code and mode made it."""
+    d, _ = make_dir(tmp_path)
+    res, out = drive(tmp_path, d)
+    assert res.returncode == 0, res.stderr
+    detail = done_detail(out)
+    rev = subprocess.run(["git", "-C", str(DRIVER.parent), "rev-parse", "HEAD"],
+                         capture_output=True, text=True).stdout.strip()
+    assert "mode=fastvep_pick" in detail
+    assert f"pipeline_rev={rev}" in detail and len(rev) == 40
+    assert "dirty=yes" in detail or "dirty=no" in detail
+
+
 def test_driver_refuses_a_missing_chunk_before_building_anything(tmp_path):
     d, _ = make_dir(tmp_path)
     (d / "c2.fastvep.vcf.gz").unlink()

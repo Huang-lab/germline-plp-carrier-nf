@@ -209,7 +209,11 @@ if [ "${agg_rc:-0}" = 3 ]; then
     FAIL_REASON="PICK anomalies: (allele, gene) rows without exactly one PICK=1"
     exit 5
 fi
+# Which code made this table (issue #9: nothing recorded the commit behind the table in use).
+# dirty=yes means uncommitted changes, so the commit alone does not reproduce it.
+pipeline_rev="$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)"
+pipeline_dirty="$( [ -n "$(git -C "$HERE" status --porcelain 2>/dev/null)" ] && echo yes || echo no)"
 python3 "$HERE/carrier_markers.py" "done" "$OUTDIR" \
-    "mode=$MODE allow_pick_anomalies=$ALLOW_ANOM chunks=${#chunks[@]} inventory=$INVENTORY $(sed -n 's/^ *fastVEP PICK flag: //p' "$OUTDIR/summary.txt" 2>/dev/null || true)"
+    "mode=$MODE pipeline_rev=$pipeline_rev dirty=$pipeline_dirty allow_pick_anomalies=$ALLOW_ANOM chunks=${#chunks[@]} inventory=$INVENTORY $(sed -n 's/^ *fastVEP PICK flag: //p' "$OUTDIR/summary.txt" 2>/dev/null || true)"
 echo "[acmg-carriers] done: $OUTDIR/acmg_variants.tsv ($(( $(wc -l < "$OUTDIR/acmg_variants.tsv") - 1 )) rows), " \
      "$OUTDIR/acmg_carriers.tsv ($(( $(wc -l < "$OUTDIR/acmg_carriers.tsv") - 1 )) rows)" >&2
