@@ -195,6 +195,10 @@ What to verify before anything else runs:
 
 ## 5. Carriers and the NO_MANE / pick comparison on chr21
 
+The table of record for downstream analyses is `--mode fastvep_pick`; see
+`CARRIER_TABLE_OF_RECORD.md` for the decision and how a carrier dir records
+the commit and mode that made it.
+
 ```bash
 acmg_fastvep/run_acmg_carriers_chr.sh --mode fastvep_pick -j 4 \
     --in-dir <batch>/results-fastvep-chr21_fv050 \
